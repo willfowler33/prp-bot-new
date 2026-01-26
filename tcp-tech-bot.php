@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: TCP Tech Bot
+ * Plugin Name: PRP Bot
  * Plugin URI: https://tcptech.com/
- * Description: Integrate your Skald AI assistant chatbot into WordPress with a modern chat interface
- * Version: 1.0.0
+ * Description: Integrate your Skald AI assistant chatbot into WordPress with a modern chat interface and full-screen GPT-like experience
+ * Version: 2.0.0
  * Author: TCP Tech
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -13,17 +13,23 @@ if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly
 }
 
+// Include the Conversation Manager
+require_once plugin_dir_path(__FILE__) . 'includes/class-conversation-manager.php';
+
 class TCP_Tech_Bot_Chat {
 
     private $option_name = 'tcp_tech_bot_settings';
     private $table_name;
+    private $conversation_manager;
 
     public function __construct() {
         global $wpdb;
         $this->table_name = $wpdb->prefix . 'tcp_tech_chat_logs';
+        $this->conversation_manager = new PRP_Conversation_Manager();
 
         // Installation hook
         register_activation_hook(__FILE__, array($this, 'create_database_table'));
+        register_activation_hook(__FILE__, array($this->conversation_manager, 'create_tables'));
 
         // Admin hooks
         add_action('admin_menu', array($this, 'add_admin_menu'));
@@ -35,11 +41,24 @@ class TCP_Tech_Bot_Chat {
 
         // Frontend hooks
         add_shortcode('tcp_tech_chat', array($this, 'chat_shortcode'));
+        add_shortcode('prp_fullscreen_chat', array($this, 'fullscreen_chat_shortcode'));
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
 
-        // AJAX hooks
+        // Register custom page template
+        add_filter('theme_page_templates', array($this, 'add_chat_template'));
+        add_filter('template_include', array($this, 'load_chat_template'));
+
+        // AJAX hooks - Widget (allows non-logged in users)
         add_action('wp_ajax_tcp_tech_chat', array($this, 'handle_chat_request'));
         add_action('wp_ajax_nopriv_tcp_tech_chat', array($this, 'handle_chat_request'));
+
+        // AJAX hooks - Full-screen chat (logged-in users only)
+        add_action('wp_ajax_tcp_get_conversations', array($this, 'ajax_get_conversations'));
+        add_action('wp_ajax_tcp_create_conversation', array($this, 'ajax_create_conversation'));
+        add_action('wp_ajax_tcp_get_conversation', array($this, 'ajax_get_conversation'));
+        add_action('wp_ajax_tcp_delete_conversation', array($this, 'ajax_delete_conversation'));
+        add_action('wp_ajax_tcp_rename_conversation', array($this, 'ajax_rename_conversation'));
+        add_action('wp_ajax_tcp_fullscreen_chat', array($this, 'handle_fullscreen_chat_request'));
     }
 
     public function maybe_create_table() {
@@ -48,6 +67,8 @@ class TCP_Tech_Bot_Chat {
         if (!$table_exists) {
             $this->create_database_table();
         }
+        // Also ensure conversations table exists
+        $this->conversation_manager->create_tables();
     }
 
     public function create_database_table() {
@@ -73,8 +94,8 @@ class TCP_Tech_Bot_Chat {
 
     public function add_admin_menu() {
         add_menu_page(
-            'TCP Tech Bot',
-            'TCP Tech Bot',
+            'PRP Bot',
+            'PRP Bot',
             'manage_options',
             'tcp-tech-bot',
             array($this, 'settings_page'),
@@ -94,20 +115,20 @@ class TCP_Tech_Bot_Chat {
 
     public function export_chat_logs_csv() {
         // Log the attempt
-        error_log('TCP Tech Bot: CSV export requested');
+        error_log('PRP Bot: CSV export requested');
 
         if (!current_user_can('manage_options')) {
-            error_log('TCP Tech Bot: CSV export - unauthorized user');
+            error_log('PRP Bot: CSV export - unauthorized user');
             wp_die('Unauthorized');
         }
 
         check_admin_referer('export_chat_logs');
-        error_log('TCP Tech Bot: CSV export - nonce verified');
+        error_log('PRP Bot: CSV export - nonce verified');
 
         global $wpdb;
 
         $logs = $wpdb->get_results("SELECT * FROM {$this->table_name} ORDER BY created_at DESC");
-        error_log('TCP Tech Bot: CSV export - found ' . count($logs) . ' logs');
+        error_log('PRP Bot: CSV export - found ' . count($logs) . ' logs');
 
         // Clear all output buffers
         while (ob_get_level()) {
@@ -148,7 +169,7 @@ class TCP_Tech_Bot_Chat {
         }
 
         fclose($output);
-        error_log('TCP Tech Bot: CSV export - completed successfully');
+        error_log('PRP Bot: CSV export - completed successfully');
         exit;
     }
 
@@ -455,7 +476,7 @@ class TCP_Tech_Bot_Chat {
 
             <div class="tcp-tech-chat-window" style="<?php echo $atts['position'] === 'inline' ? 'display: block;' : 'display: none;'; ?>">
                 <div class="tcp-tech-chat-header">
-                    <h3>TCP Tech Bot</h3>
+                    <h3>PRP Bot</h3>
                     <?php if ($atts['position'] === 'floating'): ?>
                         <div class="tcp-tech-window-controls">
                             <button class="tcp-tech-window-control tcp-tech-chat-minimize" aria-label="Minimize chat" title="Minimize">
@@ -588,7 +609,7 @@ class TCP_Tech_Bot_Chat {
         $data = json_decode($response_body, true);
 
         // Debug log the full API response
-        error_log('TCP Tech Bot: Full API response: ' . print_r($data, true));
+        error_log('PRP Bot: Full API response: ' . print_r($data, true));
 
         if (isset($data['ok']) && $data['ok'] === true && isset($data['response'])) {
             $assistant_message = $data['response'];
@@ -606,7 +627,7 @@ class TCP_Tech_Bot_Chat {
                 $references = $data['documents'];
             }
 
-            error_log('TCP Tech Bot: Extracted references: ' . print_r($references, true));
+            error_log('PRP Bot: Extracted references: ' . print_r($references, true));
 
             $metadata = array(
                 'references' => $references,
@@ -619,7 +640,7 @@ class TCP_Tech_Bot_Chat {
             // Convert 1-indexed PHP array to 0-indexed for JavaScript
             $references_zero_indexed = is_array($references) ? array_values($references) : array();
 
-            error_log('TCP Tech Bot: Converting references to 0-indexed: ' . print_r($references_zero_indexed, true));
+            error_log('PRP Bot: Converting references to 0-indexed: ' . print_r($references_zero_indexed, true));
 
             wp_send_json_success(array(
                 'message' => $assistant_message,
@@ -627,7 +648,7 @@ class TCP_Tech_Bot_Chat {
                 'references' => $references_zero_indexed
             ));
         } else {
-            error_log('TCP Tech Bot: API response error or missing data');
+            error_log('PRP Bot: API response error or missing data');
             wp_send_json_error('Invalid API response');
         }
     }
@@ -635,7 +656,7 @@ class TCP_Tech_Bot_Chat {
     private function log_chat($session_id, $user_message, $assistant_response, $response_time, $metadata = null) {
         global $wpdb;
 
-        error_log('TCP Tech Bot: Attempting to log chat - Session: ' . $session_id . ', Table: ' . $this->table_name);
+        error_log('PRP Bot: Attempting to log chat - Session: ' . $session_id . ', Table: ' . $this->table_name);
 
         $insert_data = array(
             'session_id' => $session_id,
@@ -650,10 +671,379 @@ class TCP_Tech_Bot_Chat {
         $result = $wpdb->insert($this->table_name, $insert_data, $insert_format);
 
         if ($result === false) {
-            error_log('TCP Tech Bot: Chat logging FAILED - ' . $wpdb->last_error);
-            error_log('TCP Tech Bot: Last query - ' . $wpdb->last_query);
+            error_log('PRP Bot: Chat logging FAILED - ' . $wpdb->last_error);
+            error_log('PRP Bot: Last query - ' . $wpdb->last_query);
         } else {
-            error_log('TCP Tech Bot: Chat logged successfully with ID: ' . $wpdb->insert_id);
+            error_log('PRP Bot: Chat logged successfully with ID: ' . $wpdb->insert_id);
+        }
+    }
+
+    /**
+     * Add custom chat template to page template dropdown
+     */
+    public function add_chat_template($templates) {
+        $templates['prp-chat-template'] = 'PRP Full-Screen Chat';
+        return $templates;
+    }
+
+    /**
+     * Load the custom chat template
+     */
+    public function load_chat_template($template) {
+        if (is_page()) {
+            $page_template = get_page_template_slug();
+            if ($page_template === 'prp-chat-template') {
+                $plugin_template = plugin_dir_path(__FILE__) . 'templates/chat-page.php';
+                if (file_exists($plugin_template)) {
+                    return $plugin_template;
+                }
+            }
+        }
+        return $template;
+    }
+
+    /**
+     * Full-screen chat shortcode
+     */
+    public function fullscreen_chat_shortcode($atts) {
+        // Require user to be logged in
+        if (!is_user_logged_in()) {
+            return '<div class="prp-login-required">
+                <p>Please <a href="' . wp_login_url(get_permalink()) . '">log in</a> to access the chat.</p>
+            </div>';
+        }
+
+        // Enqueue fullscreen assets
+        $this->enqueue_fullscreen_assets();
+
+        $user = wp_get_current_user();
+
+        ob_start();
+        include plugin_dir_path(__FILE__) . 'templates/chat-page.php';
+        return ob_get_clean();
+    }
+
+    /**
+     * Enqueue fullscreen chat assets
+     */
+    public function enqueue_fullscreen_assets() {
+        $css_version = file_exists(plugin_dir_path(__FILE__) . 'css/chat-fullscreen.css')
+            ? filemtime(plugin_dir_path(__FILE__) . 'css/chat-fullscreen.css')
+            : '1.0.0';
+        $js_version = file_exists(plugin_dir_path(__FILE__) . 'js/chat-fullscreen.js')
+            ? filemtime(plugin_dir_path(__FILE__) . 'js/chat-fullscreen.js')
+            : '1.0.0';
+
+        wp_enqueue_style(
+            'prp-chat-fullscreen',
+            plugin_dir_url(__FILE__) . 'css/chat-fullscreen.css',
+            array(),
+            $css_version
+        );
+
+        wp_enqueue_script(
+            'prp-chat-fullscreen',
+            plugin_dir_url(__FILE__) . 'js/chat-fullscreen.js',
+            array('jquery'),
+            $js_version,
+            true
+        );
+
+        $options = get_option($this->option_name);
+        $welcome_message = isset($options['welcome_message']) ? $options['welcome_message'] : 'Hello! How can I help you today?';
+
+        $user = wp_get_current_user();
+
+        wp_localize_script('prp-chat-fullscreen', 'prpChat', array(
+            'ajaxurl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('prp_chat_nonce'),
+            'welcomeMessage' => $welcome_message,
+            'userId' => $user->ID,
+            'userName' => $user->display_name,
+            'userAvatar' => get_avatar_url($user->ID, array('size' => 40))
+        ));
+    }
+
+    /**
+     * AJAX: Get all conversations for current user
+     */
+    public function ajax_get_conversations() {
+        check_ajax_referer('prp_chat_nonce', 'nonce');
+
+        if (!is_user_logged_in()) {
+            wp_send_json_error('Not logged in');
+            return;
+        }
+
+        $user_id = get_current_user_id();
+        $conversations = $this->conversation_manager->get_user_conversations($user_id);
+
+        wp_send_json_success(array('conversations' => $conversations));
+    }
+
+    /**
+     * AJAX: Create a new conversation
+     */
+    public function ajax_create_conversation() {
+        check_ajax_referer('prp_chat_nonce', 'nonce');
+
+        if (!is_user_logged_in()) {
+            wp_send_json_error('Not logged in');
+            return;
+        }
+
+        $user_id = get_current_user_id();
+        $conversation_id = $this->conversation_manager->create_conversation($user_id);
+
+        if ($conversation_id === false) {
+            wp_send_json_error('Failed to create conversation');
+            return;
+        }
+
+        $conversation = $this->conversation_manager->get_conversation($conversation_id, $user_id);
+
+        wp_send_json_success(array('conversation' => $conversation));
+    }
+
+    /**
+     * AJAX: Get a specific conversation with messages
+     */
+    public function ajax_get_conversation() {
+        check_ajax_referer('prp_chat_nonce', 'nonce');
+
+        if (!is_user_logged_in()) {
+            wp_send_json_error('Not logged in');
+            return;
+        }
+
+        $conversation_id = isset($_POST['conversation_id']) ? intval($_POST['conversation_id']) : 0;
+        if (!$conversation_id) {
+            wp_send_json_error('Invalid conversation ID');
+            return;
+        }
+
+        $user_id = get_current_user_id();
+        $conversation = $this->conversation_manager->get_conversation($conversation_id, $user_id);
+
+        if (!$conversation) {
+            wp_send_json_error('Conversation not found');
+            return;
+        }
+
+        wp_send_json_success(array('conversation' => $conversation));
+    }
+
+    /**
+     * AJAX: Delete a conversation
+     */
+    public function ajax_delete_conversation() {
+        check_ajax_referer('prp_chat_nonce', 'nonce');
+
+        if (!is_user_logged_in()) {
+            wp_send_json_error('Not logged in');
+            return;
+        }
+
+        $conversation_id = isset($_POST['conversation_id']) ? intval($_POST['conversation_id']) : 0;
+        if (!$conversation_id) {
+            wp_send_json_error('Invalid conversation ID');
+            return;
+        }
+
+        $user_id = get_current_user_id();
+        $result = $this->conversation_manager->delete_conversation($conversation_id, $user_id);
+
+        if (!$result) {
+            wp_send_json_error('Failed to delete conversation');
+            return;
+        }
+
+        wp_send_json_success(array('deleted' => true));
+    }
+
+    /**
+     * AJAX: Rename a conversation
+     */
+    public function ajax_rename_conversation() {
+        check_ajax_referer('prp_chat_nonce', 'nonce');
+
+        if (!is_user_logged_in()) {
+            wp_send_json_error('Not logged in');
+            return;
+        }
+
+        $conversation_id = isset($_POST['conversation_id']) ? intval($_POST['conversation_id']) : 0;
+        $title = isset($_POST['title']) ? sanitize_text_field($_POST['title']) : '';
+
+        if (!$conversation_id || empty($title)) {
+            wp_send_json_error('Invalid parameters');
+            return;
+        }
+
+        $user_id = get_current_user_id();
+        $result = $this->conversation_manager->update_conversation_title($conversation_id, $title, $user_id);
+
+        if (!$result) {
+            wp_send_json_error('Failed to rename conversation');
+            return;
+        }
+
+        wp_send_json_success(array('renamed' => true, 'title' => $title));
+    }
+
+    /**
+     * AJAX: Handle fullscreen chat request (logged-in users only)
+     */
+    public function handle_fullscreen_chat_request() {
+        check_ajax_referer('prp_chat_nonce', 'nonce');
+
+        if (!is_user_logged_in()) {
+            wp_send_json_error('Not logged in');
+            return;
+        }
+
+        if (!isset($_POST['message'])) {
+            wp_send_json_error('No message provided');
+            return;
+        }
+
+        $start_time = microtime(true);
+        $message = sanitize_textarea_field($_POST['message']);
+
+        if (empty(trim($message))) {
+            wp_send_json_error('Message content cannot be empty');
+            return;
+        }
+
+        $user_id = get_current_user_id();
+        $conversation_id = isset($_POST['conversation_id']) ? intval($_POST['conversation_id']) : 0;
+
+        // Verify conversation ownership
+        if ($conversation_id && !$this->conversation_manager->user_owns_conversation($conversation_id, $user_id)) {
+            wp_send_json_error('Invalid conversation');
+            return;
+        }
+
+        // Create new conversation if not provided
+        if (!$conversation_id) {
+            $conversation_id = $this->conversation_manager->create_conversation($user_id);
+            if (!$conversation_id) {
+                wp_send_json_error('Failed to create conversation');
+                return;
+            }
+        }
+
+        // Check if this is the first message in the conversation
+        $existing_messages = $this->conversation_manager->get_conversation_messages($conversation_id);
+        $is_first_message = empty($existing_messages);
+
+        $options = get_option($this->option_name);
+        $api_key = isset($options['api_key']) ? $options['api_key'] : '';
+        $project_id = isset($options['project_id']) ? $options['project_id'] : '';
+        $system_prompt = isset($options['system_prompt']) ? $options['system_prompt'] : '';
+
+        if (empty($api_key)) {
+            wp_send_json_error('API key not configured');
+            return;
+        }
+
+        // Make API request to Skald
+        $url = "https://api.useskald.com/api/v1/chat";
+
+        $body = array(
+            'query' => $message,
+            'stream' => false,
+            'rag_config' => array(
+                'references' => array(
+                    'enabled' => true
+                ),
+                'reranking' => array(
+                    'enabled' => true,
+                    'topK' => 10
+                )
+            )
+        );
+
+        if (!empty($system_prompt)) {
+            $body['system_prompt'] = $system_prompt;
+        }
+
+        if (!empty($project_id)) {
+            $body['project_id'] = $project_id;
+        }
+
+        $response = wp_remote_post($url, array(
+            'headers' => array(
+                'Authorization' => 'Bearer ' . $api_key,
+                'Content-Type' => 'application/json'
+            ),
+            'body' => json_encode($body),
+            'timeout' => 30
+        ));
+
+        if (is_wp_error($response)) {
+            wp_send_json_error($response->get_error_message());
+            return;
+        }
+
+        $response_code = wp_remote_retrieve_response_code($response);
+        $response_body = wp_remote_retrieve_body($response);
+
+        if ($response_code !== 200) {
+            wp_send_json_error('API request failed: ' . $response_body);
+            return;
+        }
+
+        $data = json_decode($response_body, true);
+
+        if (isset($data['ok']) && $data['ok'] === true && isset($data['response'])) {
+            $assistant_message = $data['response'];
+            $response_time = microtime(true) - $start_time;
+
+            // Extract references
+            $references = array();
+            if (isset($data['references'])) {
+                $references = $data['references'];
+            } elseif (isset($data['sources'])) {
+                $references = $data['sources'];
+            } elseif (isset($data['citations'])) {
+                $references = $data['citations'];
+            } elseif (isset($data['documents'])) {
+                $references = $data['documents'];
+            }
+
+            $metadata = array(
+                'references' => $references,
+                'full_response' => $data
+            );
+
+            // Log to conversation
+            $this->conversation_manager->log_message(
+                $conversation_id,
+                $user_id,
+                $message,
+                $assistant_message,
+                $response_time,
+                $metadata
+            );
+
+            // Auto-title if first message
+            if ($is_first_message) {
+                $this->conversation_manager->auto_title_conversation($conversation_id, $message);
+            }
+
+            // Get updated conversation for title
+            $conversation = $this->conversation_manager->get_conversation($conversation_id, $user_id);
+
+            wp_send_json_success(array(
+                'message' => $assistant_message,
+                'conversation_id' => $conversation_id,
+                'conversation_title' => $conversation ? $conversation->title : 'New Chat',
+                'references' => is_array($references) ? array_values($references) : array(),
+                'is_new_conversation' => $is_first_message
+            ));
+        } else {
+            wp_send_json_error('Invalid API response');
         }
     }
 }

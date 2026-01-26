@@ -1,0 +1,79 @@
+/*
+Theme Name: PRP Chat Theme
+Theme URI: https://tcptech.com/
+Description: A minimal child theme optimized for the PRP Bot full-screen chat interface. Works with any parent theme.
+Author: TCP Tech
+Author URI: https://tcptech.com/
+Template: twentytwentyfour
+Version: 1.0.0
+License: GNU General Public License v2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
+Text Domain: prp-chat-theme
+
+Note: This theme is designed to work as a child of Twenty Twenty-Four,
+but you can change the "Template:" line above to match your preferred parent theme.
+Common options: twentytwentyfour, generatepress, astra, flavor
+*/
+
+/* ==================== CHAT PAGE OVERRIDES ==================== */
+
+/* Hide all theme elements on chat page template */
+body.page-template-page-chat,
+body.prp-chat-page {
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+
+body.page-template-page-chat #page,
+body.page-template-page-chat .site,
+body.page-template-page-chat header,
+body.page-template-page-chat .site-header,
+body.page-template-page-chat footer,
+body.page-template-page-chat .site-footer,
+body.page-template-page-chat .sidebar,
+body.page-template-page-chat .wp-site-blocks > header,
+body.page-template-page-chat .wp-site-blocks > footer,
+body.prp-chat-page #page,
+body.prp-chat-page .site,
+body.prp-chat-page header,
+body.prp-chat-page .site-header,
+body.prp-chat-page footer,
+body.prp-chat-page .site-footer,
+body.prp-chat-page .sidebar {
+    display: none !important;
+}
+
+/* Hide WordPress admin bar on chat page */
+body.page-template-page-chat #wpadminbar,
+body.prp-chat-page #wpadminbar {
+    display: none !important;
+}
+
+body.page-template-page-chat,
+body.prp-chat-page {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+}
+
+/* Ensure chat app takes full viewport */
+body.page-template-page-chat .prp-chat-app,
+body.prp-chat-page .prp-chat-app {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 99999 !important;
+}
+
+/* ==================== GENERAL THEME STYLES ==================== */
+
+/* Optional: Style the chat widget when used on other pages */
+.tcp-tech-chat-container {
+    /* Widget styles are handled by the plugin CSS */
+}
+
+/* Optional: Add any additional theme-wide customizations below */

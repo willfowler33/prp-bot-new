@@ -1,0 +1,545 @@
+/* TCP Tech Bot Chat Widget Styles */
+
+/* Reset and isolate from site CSS */
+.tcp-tech-chat-container,
+.tcp-tech-chat-container *,
+.tcp-tech-chat-container *::before,
+.tcp-tech-chat-container *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* Prevent site button styles from affecting our buttons */
+.tcp-tech-chat-container button {
+    all: unset;
+    box-sizing: border-box;
+    cursor: pointer;
+}
+
+.tcp-tech-chat-container a {
+    all: unset;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+/* Floating button */
+.tcp-tech-chat-floating {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 9999;
+}
+
+.tcp-tech-chat-button {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px;
+    background: #002b5b !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 50px !important;
+    padding: 12px 24px !important;
+    font-size: 16px !important;
+    font-weight: 500 !important;
+    cursor: pointer !important;
+    box-shadow: 0 4px 12px rgba(0, 43, 91, 0.4) !important;
+    transition: all 0.3s ease !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+    line-height: normal !important;
+}
+
+.tcp-tech-chat-button:hover {
+    background: #2589bd;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 43, 91, 0.5);
+}
+
+.tcp-tech-chat-button svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* Chat window */
+.tcp-tech-chat-window {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    width: 380px;
+    height: 600px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.tcp-tech-chat-floating .tcp-tech-chat-window {
+    position: fixed;
+    bottom: 90px;
+    right: 20px;
+    z-index: 9998;
+}
+
+/* Maximized state */
+.tcp-tech-chat-window.maximized {
+    width: calc(100vw - 40px) !important;
+    height: calc(100vh - 40px) !important;
+    top: 20px !important;
+    left: 20px !important;
+    right: 20px !important;
+    bottom: 20px !important;
+    border-radius: 12px;
+}
+
+/* Minimized state */
+.tcp-tech-chat-window.minimized {
+    height: 56px !important;
+    overflow: hidden;
+}
+
+.tcp-tech-chat-window.minimized .tcp-tech-chat-messages,
+.tcp-tech-chat-window.minimized .tcp-tech-chat-input-container,
+.tcp-tech-chat-window.minimized .tcp-tech-resize-handle {
+    display: none;
+}
+
+.tcp-tech-chat-inline .tcp-tech-chat-window {
+    max-width: 100%;
+    height: 500px;
+    margin: 0 auto;
+}
+
+/* Header */
+.tcp-tech-chat-header {
+    background: linear-gradient(135deg, #002b5b 0%, #2589bd 100%);
+    color: white;
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: move;
+    user-select: none;
+}
+
+.tcp-tech-chat-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #fff !important;
+}
+
+/* Window Controls */
+.tcp-tech-window-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.tcp-tech-window-control {
+    background: none !important;
+    border: none !important;
+    color: white !important;
+    cursor: pointer !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: opacity 0.2s !important;
+    width: auto !important;
+    height: auto !important;
+    min-width: auto !important;
+    text-transform: none !important;
+}
+
+.tcp-tech-window-control:hover {
+    opacity: 0.7;
+}
+
+.tcp-tech-window-control svg {
+    width: 18px;
+    height: 18px;
+    stroke-width: 2.5;
+}
+
+/* Messages area */
+.tcp-tech-chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    background: #f9fafb;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.tcp-tech-chat-message {
+    display: flex;
+    gap: 12px;
+    animation: messageSlideIn 0.3s ease;
+}
+
+@keyframes messageSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.tcp-tech-chat-message.user {
+    flex-direction: row-reverse;
+}
+
+.tcp-tech-chat-message-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.tcp-tech-chat-message.assistant .tcp-tech-chat-message-avatar {
+    background: #002b5b;
+    color: white;
+}
+
+.tcp-tech-chat-message.user .tcp-tech-chat-message-avatar {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.tcp-tech-chat-message-content {
+    flex: 1;
+    max-width: 75%;
+}
+
+.tcp-tech-chat-message-bubble {
+    padding: 12px 16px;
+    border-radius: 12px;
+    line-height: 1.5;
+    font-size: 14px;
+}
+
+.tcp-tech-chat-message.assistant .tcp-tech-chat-message-bubble {
+    background: white;
+    color: #1f2937;
+    border: 1px solid #e5e7eb;
+}
+
+.tcp-tech-chat-message.user .tcp-tech-chat-message-bubble {
+    background: #002b5b;
+    color: white;
+}
+
+.tcp-tech-chat-message-time {
+    font-size: 11px;
+    color: #9ca3af;
+    margin-top: 4px;
+    padding: 0 4px;
+}
+
+/* Typing indicator */
+.tcp-tech-chat-typing {
+    display: flex;
+    gap: 4px;
+    padding: 12px 16px;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    width: fit-content;
+}
+
+.tcp-tech-chat-typing span {
+    width: 8px;
+    height: 8px;
+    background: #9ca3af;
+    border-radius: 50%;
+    animation: typing 1.4s infinite;
+}
+
+.tcp-tech-chat-typing span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.tcp-tech-chat-typing span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes typing {
+    0%, 60%, 100% {
+        opacity: 0.3;
+        transform: translateY(0);
+    }
+    30% {
+        opacity: 1;
+        transform: translateY(-8px);
+    }
+}
+
+/* Input area */
+.tcp-tech-chat-input-container {
+    padding: 16px;
+    background: white;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+}
+
+.tcp-tech-chat-input {
+    flex: 1;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: none;
+    max-height: 120px;
+    transition: border-color 0.2s;
+}
+
+.tcp-tech-chat-input:focus {
+    outline: none;
+    border-color: #002b5b;
+}
+
+.tcp-tech-chat-send {
+    background: #002b5b !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 10px !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: background 0.2s !important;
+    flex-shrink: 0;
+    width: auto !important;
+    height: auto !important;
+    min-width: auto !important;
+    text-transform: none !important;
+}
+
+.tcp-tech-chat-send:hover:not(:disabled) {
+    background: #2589bd !important;
+}
+
+.tcp-tech-chat-send:disabled {
+    background: #9ca3af !important;
+    cursor: not-allowed !important;
+}
+
+/* Error message */
+.tcp-tech-chat-error {
+    background: #fee;
+    color: #c00;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    margin: 12px;
+    border: 1px solid #fcc;
+}
+
+/* References/Footnotes */
+.tcp-tech-chat-references {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e5e7eb;
+    font-size: 12px;
+}
+
+.tcp-tech-chat-references-title {
+    font-weight: 600;
+    color: #6b7280;
+    margin-bottom: 8px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tcp-tech-chat-reference-item {
+    display: block;
+    margin-bottom: 8px;
+    line-height: 1.5;
+}
+
+.tcp-tech-chat-reference-link {
+    color: #2589bd !important;
+    text-decoration: underline !important;
+    word-break: break-word;
+    transition: color 0.2s;
+    cursor: pointer !important;
+    display: inline !important;
+    background: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-weight: normal !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+}
+
+.tcp-tech-chat-reference-link:hover {
+    color: #002b5b !important;
+    text-decoration: underline !important;
+}
+
+.tcp-tech-chat-reference-text {
+    color: #374151;
+    word-break: break-word;
+    line-height: 1.4;
+}
+
+/* Footer for document library link */
+.tcp-tech-chat-footer {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e5e7eb;
+    font-size: 11px;
+    color: #6b7280;
+    font-style: italic;
+    line-height: 1.5;
+}
+
+/* Scrollbar styling */
+.tcp-tech-chat-messages::-webkit-scrollbar {
+    width: 6px;
+}
+
+.tcp-tech-chat-messages::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.tcp-tech-chat-messages::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 3px;
+}
+
+.tcp-tech-chat-messages::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+
+/* Resize Handles */
+.tcp-tech-resize-handle {
+    position: absolute;
+    z-index: 10;
+    background: transparent;
+}
+
+.tcp-tech-chat-window.maximized .tcp-tech-resize-handle,
+.tcp-tech-chat-window.minimized .tcp-tech-resize-handle {
+    display: none;
+}
+
+/* Top and Bottom */
+.tcp-tech-resize-n,
+.tcp-tech-resize-s {
+    left: 0;
+    right: 0;
+    height: 10px;
+    cursor: ns-resize;
+}
+
+.tcp-tech-resize-n {
+    top: 0;
+}
+
+.tcp-tech-resize-s {
+    bottom: 0;
+}
+
+/* Left and Right */
+.tcp-tech-resize-e,
+.tcp-tech-resize-w {
+    top: 0;
+    bottom: 0;
+    width: 10px;
+    cursor: ew-resize;
+}
+
+.tcp-tech-resize-e {
+    right: 0;
+}
+
+.tcp-tech-resize-w {
+    left: 0;
+}
+
+/* Corners */
+.tcp-tech-resize-ne,
+.tcp-tech-resize-nw,
+.tcp-tech-resize-se,
+.tcp-tech-resize-sw {
+    width: 15px;
+    height: 15px;
+}
+
+.tcp-tech-resize-ne {
+    top: 0;
+    right: 0;
+    cursor: nesw-resize;
+}
+
+.tcp-tech-resize-nw {
+    top: 0;
+    left: 0;
+    cursor: nwse-resize;
+}
+
+.tcp-tech-resize-se {
+    bottom: 0;
+    right: 0;
+    cursor: nwse-resize;
+}
+
+.tcp-tech-resize-sw {
+    bottom: 0;
+    left: 0;
+    cursor: nesw-resize;
+}
+
+/* Hover effect for resize handles (for visual feedback during development) */
+.tcp-tech-resize-handle:hover {
+    background: rgba(0, 43, 91, 0.1);
+}
+
+/* Dragging state */
+.tcp-tech-chat-window.dragging {
+    transition: none;
+    user-select: none;
+}
+
+.tcp-tech-chat-window.resizing {
+    transition: none;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+    .tcp-tech-chat-floating .tcp-tech-chat-window {
+        width: calc(100vw - 40px);
+        height: calc(100vh - 120px);
+        right: 20px;
+    }
+
+    .tcp-tech-chat-button span {
+        display: none;
+    }
+
+    .tcp-tech-chat-button {
+        width: 56px;
+        height: 56px;
+        padding: 0;
+        justify-content: center;
+        border-radius: 50%;
+    }
+}
