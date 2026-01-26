@@ -437,36 +437,19 @@ jQuery(document).ready(function($) {
             const avatarInitial = isUser ? prpChat.userName.charAt(0).toUpperCase() : 'P';
             const roleLabel = isUser ? 'You' : 'PRP Bot';
 
-            // Store raw content for copy (clean version)
+            // Store raw content for copy (just remove reference markers)
             let rawContent = content
                 .replace(/\[\[\d+\]\]/g, '')
                 .replace(/\[\d+\]/g, '')
-                .replace(/\[\s*\]/g, '')
-                .replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '')
-                .replace(/[^\s\[\]]+\.(docx?|pdf|xlsx?|pptx?|txt)/gi, '')
-                .replace(/\d{1,2}-\d{1,2}[^\[\]]*?-transcript/gi, '')
-                .replace(/\d{1,2}-\d{1,2}[^\[\]]*?(Meeting|Weekly|Daily|Standup|Jira|Workflow)[^\[\]]*?(?=\s|$)/gi, '')
-                .replace(/<[^>]+>/g, '') // Remove any HTML tags
-                .replace(/\s{2,}/g, ' ')
+                .replace(/<[^>]+>/g, '')
                 .trim();
 
             // Get unique references for assistant messages
             const uniqueRefs = !isUser && references ? this.getUniqueReferences(references) : [];
 
-            // Clean content for formatting - remove inline document references
+            // Keep content as-is - only remove Skald internal URLs
             let cleanForFormat = content
-                .replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '') // Remove Skald URLs
-                .replace(/Source:\s*\[[^\]]*\]/gi, '') // Remove "Source: [title]" patterns
-                .replace(/Reference:\s*\[[^\]]*\]/gi, '') // Remove "Reference: [title]" patterns
-                .replace(/From\s+document:\s*[^\n]*/gi, '') // Remove "From document: ..." lines
-                .replace(/\([^)]*\.(docx?|pdf|xlsx?|pptx?|txt)\)/gi, '') // Remove (filename.docx) patterns
-                .replace(/[^\s\[\]]+\.(docx?|pdf|xlsx?|pptx?|txt)/gi, '') // Remove any filename with extension
-                .replace(/\d{1,2}-\d{1,2}[^\[\]]*?-transcript/gi, '') // Remove transcript patterns
-                .replace(/\d{1,2}-\d{1,2}[^\[\]]*?(Meeting|Weekly|Daily|Standup|Jira|Workflow)[^\[\]]*?(?=\s|$|\[)/gi, '') // Remove meeting patterns
-                .replace(/<div[^>]*>|<\/div>/gi, '') // Remove any stray div tags
-                .replace(/<span[^>]*prp-ref[^>]*>.*?<\/span>/gi, '') // Remove any stray tooltip spans
-                .replace(/\n{3,}/g, '\n\n') // Clean up excessive newlines
-                .replace(/\s{2,}/g, ' ') // Clean up multiple spaces
+                .replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '')
                 .trim();
 
             // Format content first (this escapes HTML)
