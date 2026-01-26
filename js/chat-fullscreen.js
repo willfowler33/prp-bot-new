@@ -448,9 +448,13 @@ jQuery(document).ready(function($) {
             // Get unique references for assistant messages
             const uniqueRefs = !isUser && references ? this.getUniqueReferences(references) : [];
 
-            // Clean content for formatting (remove refs temporarily, we'll add tooltips after)
+            // Clean content for formatting
             let cleanForFormat = content
-                .replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, ''); // Remove Skald URLs
+                .replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '') // Remove Skald URLs
+                .replace(/Source:\s*\[[^\]]*\]/gi, '') // Remove "Source: [title]" patterns
+                .replace(/Reference:\s*\[[^\]]*\]/gi, '') // Remove "Reference: [title]" patterns
+                .replace(/From\s+document:\s*[^\n]*/gi, '') // Remove "From document: ..." lines
+                .replace(/\n{3,}/g, '\n\n'); // Clean up excessive newlines
 
             // Format content first (this escapes HTML)
             let formattedContent = this.formatMessage(cleanForFormat);
@@ -458,17 +462,26 @@ jQuery(document).ready(function($) {
             // NOW add reference tooltips (after HTML escaping)
             if (!isUser && uniqueRefs.length > 0) {
                 // Replace escaped [[n]] or [n] with tooltip spans
-                // After escaping, [[ becomes [[ and ] stays ]
                 formattedContent = formattedContent.replace(/\[\[(\d+)\]\]|\[(\d+)\]/g, (match, num1, num2) => {
                     const refNum = parseInt(num1 || num2) - 1; // 0-indexed
                     if (refNum >= 0 && refNum < uniqueRefs.length) {
                         const ref = uniqueRefs[refNum];
                         const title = ref.memo_title || ref.title || ref.name || 'Reference';
-                        const snippet = ref.content || ref.text || ref.snippet || '';
+                        // Try multiple fields for content snippet
+                        const snippet = ref.content || ref.text || ref.snippet || ref.chunk || ref.excerpt || ref.summary || '';
                         const url = this.findDocumentUrl(title);
-                        const truncatedSnippet = snippet.length > 150 ? snippet.substring(0, 150) + '...' : snippet;
 
-                        return `<span class="prp-ref-number" data-ref="${refNum + 1}">${refNum + 1}<span class="prp-ref-tooltip"><div class="prp-ref-tooltip-title">${this.escapeHtml(title)}</div>${truncatedSnippet ? `<div class="prp-ref-tooltip-content">${this.escapeHtml(truncatedSnippet)}</div>` : ''}${url ? `<span class="prp-ref-tooltip-link">Click to view document</span>` : ''}</span></span>`;
+                        // Build tooltip content
+                        let tooltipContent = `<div class="prp-ref-tooltip-title">${this.escapeHtml(title)}</div>`;
+                        if (snippet && snippet.length > 0) {
+                            const truncatedSnippet = snippet.length > 200 ? snippet.substring(0, 200) + '...' : snippet;
+                            tooltipContent += `<div class="prp-ref-tooltip-content">${this.escapeHtml(truncatedSnippet)}</div>`;
+                        }
+                        if (url) {
+                            tooltipContent += `<span class="prp-ref-tooltip-link">Click to view document</span>`;
+                        }
+
+                        return `<span class="prp-ref-number" data-ref="${refNum + 1}">${refNum + 1}<span class="prp-ref-tooltip">${tooltipContent}</span></span>`;
                     }
                     return ''; // Remove unmatched references
                 });
