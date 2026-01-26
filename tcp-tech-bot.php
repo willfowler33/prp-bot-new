@@ -425,6 +425,15 @@ class TCP_Tech_Bot_Chat {
     }
 
     public function enqueue_frontend_assets() {
+        // Check if we're on the fullscreen chat template
+        if (is_page()) {
+            $page_template = get_page_template_slug();
+            if ($page_template === 'prp-chat-template') {
+                $this->enqueue_fullscreen_assets();
+                return; // Don't load widget assets on fullscreen page
+            }
+        }
+
         // Use file modification time for cache busting
         $css_version = filemtime(plugin_dir_path(__FILE__) . 'css/chat-widget.css');
         $js_version = filemtime(plugin_dir_path(__FILE__) . 'js/chat-widget.js');
