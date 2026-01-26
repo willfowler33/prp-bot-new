@@ -455,32 +455,35 @@ jQuery(document).ready(function($) {
             // Format content first (this escapes HTML)
             let formattedContent = this.formatMessage(cleanForFormat);
 
-            // NOW add reference tooltips (after HTML escaping)
+            // Track which references are actually used
+            const usedRefs = new Set();
+
+            // Replace [[n]] or [n] with styled reference numbers
             if (!isUser && uniqueRefs.length > 0) {
-                // Replace escaped [[n]] or [n] with tooltip spans
                 formattedContent = formattedContent.replace(/\[\[(\d+)\]\]|\[(\d+)\]/g, (match, num1, num2) => {
-                    const refNum = parseInt(num1 || num2) - 1; // 0-indexed
-                    if (refNum >= 0 && refNum < uniqueRefs.length) {
-                        const ref = uniqueRefs[refNum];
-                        const title = ref.memo_title || ref.title || ref.name || 'Reference';
-                        // Try multiple fields for content snippet
-                        const snippet = ref.content || ref.text || ref.snippet || ref.chunk || ref.excerpt || ref.summary || '';
-                        const url = this.findDocumentUrl(title);
-
-                        // Build tooltip content
-                        let tooltipContent = `<div class="prp-ref-tooltip-title">${this.escapeHtml(title)}</div>`;
-                        if (snippet && snippet.length > 0) {
-                            const truncatedSnippet = snippet.length > 200 ? snippet.substring(0, 200) + '...' : snippet;
-                            tooltipContent += `<div class="prp-ref-tooltip-content">${this.escapeHtml(truncatedSnippet)}</div>`;
-                        }
-                        if (url) {
-                            tooltipContent += `<span class="prp-ref-tooltip-link">Click to view document</span>`;
-                        }
-
-                        return `<span class="prp-ref-number" data-ref="${refNum + 1}">${refNum + 1}<span class="prp-ref-tooltip">${tooltipContent}</span></span>`;
+                    const refNum = parseInt(num1 || num2);
+                    if (refNum >= 1 && refNum <= uniqueRefs.length) {
+                        usedRefs.add(refNum);
+                        return `<span class="prp-ref-number">${refNum}</span>`;
                     }
                     return ''; // Remove unmatched references
                 });
+            }
+
+            // Build references key at bottom if there are used references
+            let referencesHtml = '';
+            if (!isUser && usedRefs.size > 0) {
+                const sortedRefs = Array.from(usedRefs).sort((a, b) => a - b);
+                let refItems = sortedRefs.map(refNum => {
+                    const ref = uniqueRefs[refNum - 1];
+                    const title = ref.memo_title || ref.title || ref.name || 'Reference';
+                    const url = this.findDocumentUrl(title);
+                    if (url) {
+                        return `<div class="prp-ref-item"><span class="prp-ref-key">[${refNum}]</span> <a href="${url}" target="_blank" rel="noopener">${this.escapeHtml(title)}</a></div>`;
+                    }
+                    return `<div class="prp-ref-item"><span class="prp-ref-key">[${refNum}]</span> ${this.escapeHtml(title)}</div>`;
+                }).join('');
+                referencesHtml = `<div class="prp-references-section"><div class="prp-references-title">References</div>${refItems}</div>`;
             }
 
             // Build copy button for assistant messages
@@ -508,6 +511,7 @@ jQuery(document).ready(function($) {
                         </div>
                         <div class="prp-message-content">
                             ${formattedContent}
+                            ${referencesHtml}
                         </div>
                         ${actionsHtml}
                     </div>

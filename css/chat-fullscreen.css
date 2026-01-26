@@ -895,107 +895,63 @@
     color: white;
 }
 
-/* ==================== REFERENCE TOOLTIPS ==================== */
+/* ==================== REFERENCE NUMBERS ==================== */
 .prp-ref-number {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
+    min-width: 16px;
     height: 16px;
+    padding: 0 4px;
     background: var(--prp-accent);
     color: white;
     font-size: 10px;
     font-weight: 600;
-    border-radius: 50%;
-    cursor: help;
-    position: relative;
-    vertical-align: super;
-    margin: 0 2px;
-}
-
-.prp-ref-tooltip {
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%);
-    width: 280px;
-    padding: 12px;
-    background: var(--prp-sidebar-bg);
-    color: var(--prp-sidebar-text);
     border-radius: 8px;
-    font-size: 13px;
-    line-height: 1.5;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.3s ease 0.1s, visibility 0.3s ease 0.1s;
-    z-index: 100;
-    pointer-events: none;
+    vertical-align: super;
+    margin: 0 1px;
 }
 
-/* Keep tooltip visible slightly longer when leaving */
-.prp-ref-number:hover .prp-ref-tooltip,
-.prp-ref-tooltip:hover {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-    transition-delay: 0s;
+/* ==================== REFERENCES SECTION ==================== */
+.prp-references-section {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--prp-border);
 }
 
-.prp-ref-tooltip::after {
-    content: '';
-    position: absolute;
-    top: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    border: 6px solid transparent;
-    border-top-color: var(--prp-sidebar-bg);
-}
-
-/* Hover state handled above with delay */
-
-.prp-ref-tooltip-title {
-    font-weight: 600;
-    margin-bottom: 4px;
-    color: var(--prp-accent);
-}
-
-.prp-ref-tooltip-content {
+.prp-references-title {
     font-size: 12px;
-    color: var(--prp-sidebar-text-muted);
-    max-height: 100px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-weight: 600;
+    color: var(--prp-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
 }
 
-.prp-ref-tooltip-link {
-    display: block;
-    margin-top: 8px;
-    font-size: 11px;
+.prp-ref-item {
+    font-size: 13px;
+    color: var(--prp-text-secondary);
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+
+.prp-ref-key {
     color: var(--prp-accent);
+    font-weight: 600;
+    margin-right: 4px;
 }
 
-/* Adjust tooltip position on right side of screen */
-.prp-ref-number:nth-child(n) .prp-ref-tooltip {
-    left: auto;
-    right: 0;
-    transform: none;
+.prp-ref-item a {
+    color: var(--prp-accent);
+    text-decoration: none;
 }
 
-.prp-ref-number:nth-child(n) .prp-ref-tooltip::after {
-    left: auto;
-    right: 20px;
-    transform: none;
+.prp-ref-item a:hover {
+    text-decoration: underline;
 }
 
 @media (max-width: 768px) {
     .prp-message-actions {
         padding-left: 0;
-    }
-
-    .prp-ref-tooltip {
-        width: 220px;
-        left: 0;
-        transform: none;
     }
 }
