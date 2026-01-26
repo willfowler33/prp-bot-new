@@ -443,18 +443,29 @@ jQuery(document).ready(function($) {
                 .replace(/\[\d+\]/g, '')
                 .replace(/\[\s*\]/g, '')
                 .replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '')
+                .replace(/\([^)]*\.(docx?|pdf|xlsx?|pptx?|txt)\)/gi, '')
+                .replace(/\b[\w\s\-_]+\.(docx?|pdf|xlsx?|pptx?|txt)\b/gi, '')
+                .replace(/\d{1,2}-\d{1,2}[^[]*?-transcript\.docx?/gi, '')
+                .replace(/\d{1,2}-\d{1,2}\s+[^[\n]*?(Meeting|Weekly|Daily|Standup)[^[\n]*?\.docx?/gi, '')
+                .replace(/\s{2,}/g, ' ')
                 .trim();
 
             // Get unique references for assistant messages
             const uniqueRefs = !isUser && references ? this.getUniqueReferences(references) : [];
 
-            // Clean content for formatting
+            // Clean content for formatting - remove inline document references
             let cleanForFormat = content
                 .replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '') // Remove Skald URLs
                 .replace(/Source:\s*\[[^\]]*\]/gi, '') // Remove "Source: [title]" patterns
                 .replace(/Reference:\s*\[[^\]]*\]/gi, '') // Remove "Reference: [title]" patterns
                 .replace(/From\s+document:\s*[^\n]*/gi, '') // Remove "From document: ..." lines
-                .replace(/\n{3,}/g, '\n\n'); // Clean up excessive newlines
+                .replace(/\([^)]*\.(docx?|pdf|xlsx?|pptx?|txt)\)/gi, '') // Remove (filename.docx) patterns
+                .replace(/\b[\w\s\-_]+\.(docx?|pdf|xlsx?|pptx?|txt)\b/gi, '') // Remove standalone filenames
+                .replace(/\d{1,2}-\d{1,2}[^[]*?-transcript\.docx?/gi, '') // Remove transcript filenames
+                .replace(/\d{1,2}-\d{1,2}\s+[^[\n]*?(Meeting|Weekly|Daily|Standup)[^[\n]*?\.docx?/gi, '') // Remove meeting doc names
+                .replace(/\n{3,}/g, '\n\n') // Clean up excessive newlines
+                .replace(/\s{2,}/g, ' ') // Clean up multiple spaces
+                .trim();
 
             // Format content first (this escapes HTML)
             let formattedContent = this.formatMessage(cleanForFormat);
