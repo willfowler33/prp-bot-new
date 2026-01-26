@@ -1,4 +1,4 @@
-# TCP Tech Bot WordPress Plugin
+# PRP Bot WordPress Plugin
 
 A professional WordPress plugin that integrates your Skald AI assistant chatbot directly into your WordPress website with a modern, responsive chat interface.
 
@@ -6,7 +6,7 @@ A professional WordPress plugin that integrates your Skald AI assistant chatbot 
 
 1. **Install the plugin** in your WordPress site
 2. **Activate it** from the Plugins page
-3. Go to **TCP Tech Bot** in your admin sidebar
+3. Go to **PRP Bot** in your admin sidebar
 4. Enter your API key: `sk_proj_6240b81b7844c32374889f7ef5d0f2631d5e7f17`
 5. Click **Save Settings**
 6. Add `[tcp_tech_chat]` shortcode to any page
@@ -42,7 +42,7 @@ A professional WordPress plugin that integrates your Skald AI assistant chatbot 
    ```
 3. Log in to your WordPress admin dashboard
 4. Navigate to **Plugins > Installed Plugins**
-5. Find "TCP Tech Bot" and click **Activate**
+5. Find "PRP Bot" and click **Activate**
 
 ### Option 2: ZIP Installation
 
@@ -64,8 +64,8 @@ You'll need a Skald API key from [useskald.com](https://useskald.com):
 
 After activating the plugin:
 1. Log into your WordPress admin dashboard
-2. Look for **TCP Tech Bot** in the left sidebar menu (with a chat icon)
-3. Click on **TCP Tech Bot** to open the settings page
+2. Look for **PRP Bot** in the left sidebar menu (with a chat icon)
+3. Click on **PRP Bot** to open the settings page
 
 ### 3. Configure Settings
 
