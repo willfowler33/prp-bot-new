@@ -445,13 +445,21 @@ jQuery(document).ready(function($) {
                 .replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '')
                 .trim();
 
-            // Process content with reference tooltips for assistant messages
-            let processedContent = content;
+            // Get unique references for assistant messages
             const uniqueRefs = !isUser && references ? this.getUniqueReferences(references) : [];
 
+            // Clean content for formatting (remove refs temporarily, we'll add tooltips after)
+            let cleanForFormat = content
+                .replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, ''); // Remove Skald URLs
+
+            // Format content first (this escapes HTML)
+            let formattedContent = this.formatMessage(cleanForFormat);
+
+            // NOW add reference tooltips (after HTML escaping)
             if (!isUser && uniqueRefs.length > 0) {
-                // Replace [[n]] or [n] with tooltip spans
-                processedContent = processedContent.replace(/\[\[(\d+)\]\]|\[(\d+)\]/g, (match, num1, num2) => {
+                // Replace escaped [[n]] or [n] with tooltip spans
+                // After escaping, [[ becomes [[ and ] stays ]
+                formattedContent = formattedContent.replace(/\[\[(\d+)\]\]|\[(\d+)\]/g, (match, num1, num2) => {
                     const refNum = parseInt(num1 || num2) - 1; // 0-indexed
                     if (refNum >= 0 && refNum < uniqueRefs.length) {
                         const ref = uniqueRefs[refNum];
@@ -464,16 +472,7 @@ jQuery(document).ready(function($) {
                     }
                     return ''; // Remove unmatched references
                 });
-
-                // Remove Skald URLs
-                processedContent = processedContent.replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '');
-            } else {
-                // For user messages or no references, just clean
-                processedContent = rawContent;
             }
-
-            // Format content (markdown-like)
-            let formattedContent = this.formatMessage(processedContent);
 
             // Build copy button for assistant messages
             let actionsHtml = '';
