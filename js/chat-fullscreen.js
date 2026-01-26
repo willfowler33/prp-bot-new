@@ -129,6 +129,38 @@ jQuery(document).ready(function($) {
                 const item = $(this).closest('.prp-conversation-item');
                 self.saveEditTitle(item);
             });
+
+            // Copy button click handler
+            this.messagesContainer.on('click', '.prp-copy-btn', function(e) {
+                e.preventDefault();
+                const btn = $(this);
+                const content = btn.data('content');
+
+                navigator.clipboard.writeText(content).then(() => {
+                    btn.addClass('copied');
+                    btn.find('span').text('Copied!');
+                    setTimeout(() => {
+                        btn.removeClass('copied');
+                        btn.find('span').text('Copy');
+                    }, 2000);
+                }).catch(err => {
+                    console.error('Failed to copy:', err);
+                });
+            });
+
+            // Reference number click - open document
+            this.messagesContainer.on('click', '.prp-ref-number', function(e) {
+                const tooltip = $(this).find('.prp-ref-tooltip');
+                const link = tooltip.find('.prp-ref-tooltip-link');
+                if (link.length) {
+                    // Find the document URL from the title
+                    const title = tooltip.find('.prp-ref-tooltip-title').text();
+                    const url = self.findDocumentUrl(title);
+                    if (url) {
+                        window.open(url, '_blank');
+                    }
+                }
+            });
         }
 
         handleResize() {
@@ -405,37 +437,58 @@ jQuery(document).ready(function($) {
             const avatarInitial = isUser ? prpChat.userName.charAt(0).toUpperCase() : 'P';
             const roleLabel = isUser ? 'You' : 'PRP Bot';
 
-            // Clean content
-            let cleanContent = content
+            // Store raw content for copy (clean version)
+            let rawContent = content
                 .replace(/\[\[\d+\]\]/g, '')
                 .replace(/\[\d+\]/g, '')
                 .replace(/\[\s*\]/g, '')
                 .replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '')
                 .trim();
 
-            // Format content (markdown-like)
-            let formattedContent = this.formatMessage(cleanContent);
+            // Process content with reference tooltips for assistant messages
+            let processedContent = content;
+            const uniqueRefs = !isUser && references ? this.getUniqueReferences(references) : [];
 
-            // Build references HTML
-            let referencesHtml = '';
-            if (!isUser && references && references.length > 0) {
-                const uniqueRefs = this.getUniqueReferences(references);
-                if (uniqueRefs.length > 0) {
-                    referencesHtml = '<div class="prp-message-references">';
-                    referencesHtml += '<div class="prp-references-title">Referenced Documents:</div>';
-                    uniqueRefs.forEach(ref => {
-                        const title = ref.memo_title || ref.title || ref.name;
+            if (!isUser && uniqueRefs.length > 0) {
+                // Replace [[n]] or [n] with tooltip spans
+                processedContent = processedContent.replace(/\[\[(\d+)\]\]|\[(\d+)\]/g, (match, num1, num2) => {
+                    const refNum = parseInt(num1 || num2) - 1; // 0-indexed
+                    if (refNum >= 0 && refNum < uniqueRefs.length) {
+                        const ref = uniqueRefs[refNum];
+                        const title = ref.memo_title || ref.title || ref.name || 'Reference';
+                        const snippet = ref.content || ref.text || ref.snippet || '';
                         const url = this.findDocumentUrl(title);
-                        if (url) {
-                            referencesHtml += `<div class="prp-reference-item">
-                                <a href="${this.escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="prp-reference-link">
-                                    ${this.escapeHtml(title)}
-                                </a>
-                            </div>`;
-                        }
-                    });
-                    referencesHtml += '</div>';
-                }
+                        const truncatedSnippet = snippet.length > 150 ? snippet.substring(0, 150) + '...' : snippet;
+
+                        return `<span class="prp-ref-number" data-ref="${refNum + 1}">${refNum + 1}<span class="prp-ref-tooltip"><div class="prp-ref-tooltip-title">${this.escapeHtml(title)}</div>${truncatedSnippet ? `<div class="prp-ref-tooltip-content">${this.escapeHtml(truncatedSnippet)}</div>` : ''}${url ? `<span class="prp-ref-tooltip-link">Click to view document</span>` : ''}</span></span>`;
+                    }
+                    return ''; // Remove unmatched references
+                });
+
+                // Remove Skald URLs
+                processedContent = processedContent.replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '');
+            } else {
+                // For user messages or no references, just clean
+                processedContent = rawContent;
+            }
+
+            // Format content (markdown-like)
+            let formattedContent = this.formatMessage(processedContent);
+
+            // Build copy button for assistant messages
+            let actionsHtml = '';
+            if (!isUser) {
+                actionsHtml = `
+                    <div class="prp-message-actions">
+                        <button class="prp-copy-btn" data-content="${this.escapeHtml(rawContent).replace(/"/g, '&quot;')}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                            <span>Copy</span>
+                        </button>
+                    </div>
+                `;
             }
 
             const messageHtml = `
@@ -448,7 +501,7 @@ jQuery(document).ready(function($) {
                         <div class="prp-message-content">
                             ${formattedContent}
                         </div>
-                        ${referencesHtml}
+                        ${actionsHtml}
                     </div>
                 </div>
             `;

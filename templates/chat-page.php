@@ -66,10 +66,15 @@ $user = wp_get_current_user();
         </nav>
 
         <div class="prp-sidebar-footer">
-            <div class="prp-user-info">
+            <a href="<?php echo wp_logout_url(home_url()); ?>" class="prp-user-info prp-logout-link" title="Click to logout">
                 <?php echo get_avatar($user->ID, 32, '', '', array('class' => 'prp-user-avatar')); ?>
                 <span class="prp-user-name"><?php echo esc_html($user->display_name); ?></span>
-            </div>
+                <svg class="prp-logout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                    <polyline points="16 17 21 12 16 7"></polyline>
+                    <line x1="21" y1="12" x2="9" y2="12"></line>
+                </svg>
+            </a>
         </div>
     </aside>
 
@@ -120,7 +125,6 @@ $user = wp_get_current_user();
                 </div>
                 <p class="prp-disclaimer">
                     PRP Bot can make mistakes. Consider checking important information.
-                    <a href="https://theconcreteprotector.com/tcp-document-library/" target="_blank" rel="noopener">View Document Library</a>
                 </p>
             </div>
         </div>
