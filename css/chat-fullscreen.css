@@ -895,59 +895,17 @@
     color: white;
 }
 
-/* ==================== REFERENCE NUMBERS ==================== */
-.prp-ref-number {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
-    background: var(--prp-accent);
-    color: white;
-    font-size: 10px;
-    font-weight: 600;
-    border-radius: 8px;
-    vertical-align: super;
-    margin: 0 1px;
-}
-
 /* ==================== REFERENCES SECTION ==================== */
 .prp-references-section {
-    margin-top: 20px;
-    padding-top: 16px;
+    margin-top: 16px;
+    padding-top: 12px;
     border-top: 1px solid var(--prp-border);
-}
-
-.prp-references-title {
     font-size: 12px;
-    font-weight: 600;
     color: var(--prp-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 8px;
 }
 
 .prp-ref-item {
-    font-size: 13px;
-    color: var(--prp-text-secondary);
-    margin-bottom: 4px;
-    line-height: 1.4;
-}
-
-.prp-ref-key {
-    color: var(--prp-accent);
-    font-weight: 600;
-    margin-right: 4px;
-}
-
-.prp-ref-item a {
-    color: var(--prp-accent);
-    text-decoration: none;
-}
-
-.prp-ref-item a:hover {
-    text-decoration: underline;
+    margin-bottom: 2px;
 }
 
 @media (max-width: 768px) {

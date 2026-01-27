@@ -458,32 +458,28 @@ jQuery(document).ready(function($) {
             // Track which references are actually used
             const usedRefs = new Set();
 
-            // Replace [[n]] or [n] with styled reference numbers
+            // Replace [[n]] or [n] with just the number
             if (!isUser && uniqueRefs.length > 0) {
                 formattedContent = formattedContent.replace(/\[\[(\d+)\]\]|\[(\d+)\]/g, (match, num1, num2) => {
                     const refNum = parseInt(num1 || num2);
                     if (refNum >= 1 && refNum <= uniqueRefs.length) {
                         usedRefs.add(refNum);
-                        return `<span class="prp-ref-number">${refNum}</span>`;
+                        return `<sup>${refNum}</sup>`;
                     }
-                    return ''; // Remove unmatched references
+                    return '';
                 });
             }
 
-            // Build references key at bottom if there are used references
+            // Build simple references list at bottom
             let referencesHtml = '';
             if (!isUser && usedRefs.size > 0) {
                 const sortedRefs = Array.from(usedRefs).sort((a, b) => a - b);
                 let refItems = sortedRefs.map(refNum => {
                     const ref = uniqueRefs[refNum - 1];
-                    const title = ref.memo_title || ref.title || ref.name || 'Reference';
-                    const url = this.findDocumentUrl(title);
-                    if (url) {
-                        return `<div class="prp-ref-item"><span class="prp-ref-key">[${refNum}]</span> <a href="${url}" target="_blank" rel="noopener">${this.escapeHtml(title)}</a></div>`;
-                    }
-                    return `<div class="prp-ref-item"><span class="prp-ref-key">[${refNum}]</span> ${this.escapeHtml(title)}</div>`;
+                    const title = ref.memo_title || ref.title || ref.name || '';
+                    return `<div class="prp-ref-item">[${refNum}] ${this.escapeHtml(title)}</div>`;
                 }).join('');
-                referencesHtml = `<div class="prp-references-section"><div class="prp-references-title">References</div>${refItems}</div>`;
+                referencesHtml = `<div class="prp-references-section">${refItems}</div>`;
             }
 
             // Build copy button for assistant messages
