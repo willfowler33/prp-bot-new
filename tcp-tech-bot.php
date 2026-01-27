@@ -599,7 +599,7 @@ class TCP_Tech_Bot_Chat {
                 'Content-Type' => 'application/json'
             ),
             'body' => json_encode($body),
-            'timeout' => 30
+            'timeout' => 60
         ));
 
         if (is_wp_error($response)) {
@@ -991,7 +991,7 @@ class TCP_Tech_Bot_Chat {
                 'Content-Type' => 'application/json'
             ),
             'body' => json_encode($body),
-            'timeout' => 30
+            'timeout' => 60
         ));
 
         if (is_wp_error($response)) {
