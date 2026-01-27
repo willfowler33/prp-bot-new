@@ -770,6 +770,10 @@ jQuery(document).ready(function($) {
          * Get unique references by title
          */
         getUniqueReferences(references) {
+            if (!references || !Array.isArray(references)) {
+                return [];
+            }
+
             const seen = new Set();
             const unique = [];
 
