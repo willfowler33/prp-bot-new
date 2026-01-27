@@ -323,10 +323,14 @@ jQuery(document).ready(function($) {
                     const conv = response.data.conversation;
                     this.conversationTitle.text(conv.title || 'New Chat');
                     this.renderMessages(conv.messages || []);
+                } else {
+                    const errorMsg = response.data || 'Conversation not found';
+                    console.error('Failed to load conversation:', errorMsg);
+                    this.showError(errorMsg);
                 }
             } catch (error) {
                 console.error('Failed to load conversation:', error);
-                this.showError('Failed to load conversation');
+                this.showError('Network error loading conversation');
             }
         }
 

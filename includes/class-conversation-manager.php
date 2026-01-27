@@ -129,6 +129,9 @@ class PRP_Conversation_Manager {
     public function get_conversation($conversation_id, $user_id = null) {
         global $wpdb;
 
+        // Ensure table exists
+        $this->ensure_tables_exist();
+
         // Build query with optional user verification
         $where_clause = "id = %d";
         $params = array($conversation_id);
@@ -144,6 +147,7 @@ class PRP_Conversation_Manager {
         ));
 
         if (!$conversation) {
+            error_log("PRP Bot: Conversation $conversation_id not found for user $user_id. Last error: " . $wpdb->last_error);
             return null;
         }
 
@@ -151,6 +155,19 @@ class PRP_Conversation_Manager {
         $conversation->messages = $this->get_conversation_messages($conversation_id);
 
         return $conversation;
+    }
+
+    /**
+     * Ensure tables exist (called on first access)
+     */
+    private function ensure_tables_exist() {
+        global $wpdb;
+
+        // Check if conversations table exists
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$this->conversations_table}'");
+        if (!$table_exists) {
+            $this->create_tables();
+        }
     }
 
     /**
