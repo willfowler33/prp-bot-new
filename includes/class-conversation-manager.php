@@ -52,18 +52,28 @@ class PRP_Conversation_Manager {
     private function maybe_add_columns() {
         global $wpdb;
 
+        // Check if messages table exists first
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$this->messages_table}'");
+        if (!$table_exists) {
+            return; // Main plugin will create it
+        }
+
         // Check if user_id column exists
         $user_id_exists = $wpdb->get_results("SHOW COLUMNS FROM {$this->messages_table} LIKE 'user_id'");
         if (empty($user_id_exists)) {
-            $wpdb->query("ALTER TABLE {$this->messages_table} ADD COLUMN user_id bigint(20) DEFAULT NULL AFTER id");
-            $wpdb->query("ALTER TABLE {$this->messages_table} ADD INDEX user_id (user_id)");
+            $result = $wpdb->query("ALTER TABLE {$this->messages_table} ADD COLUMN user_id bigint(20) DEFAULT NULL AFTER id");
+            if ($result !== false) {
+                $wpdb->query("ALTER TABLE {$this->messages_table} ADD INDEX user_id (user_id)");
+            }
         }
 
         // Check if conversation_id column exists
         $conversation_id_exists = $wpdb->get_results("SHOW COLUMNS FROM {$this->messages_table} LIKE 'conversation_id'");
         if (empty($conversation_id_exists)) {
-            $wpdb->query("ALTER TABLE {$this->messages_table} ADD COLUMN conversation_id bigint(20) DEFAULT NULL AFTER user_id");
-            $wpdb->query("ALTER TABLE {$this->messages_table} ADD INDEX conversation_id (conversation_id)");
+            $result = $wpdb->query("ALTER TABLE {$this->messages_table} ADD COLUMN conversation_id bigint(20) DEFAULT NULL AFTER user_id");
+            if ($result !== false) {
+                $wpdb->query("ALTER TABLE {$this->messages_table} ADD INDEX conversation_id (conversation_id)");
+            }
         }
     }
 
@@ -167,6 +177,9 @@ class PRP_Conversation_Manager {
         $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$this->conversations_table}'");
         if (!$table_exists) {
             $this->create_tables();
+        } else {
+            // Table exists, but ensure columns are added to messages table
+            $this->maybe_add_columns();
         }
     }
 
@@ -179,6 +192,9 @@ class PRP_Conversation_Manager {
     public function get_conversation_messages($conversation_id) {
         global $wpdb;
 
+        // Ensure columns exist before querying
+        $this->maybe_add_columns();
+
         $messages = $wpdb->get_results($wpdb->prepare(
             "SELECT id, user_message, assistant_response, metadata, created_at
              FROM {$this->messages_table}
@@ -186,6 +202,10 @@ class PRP_Conversation_Manager {
              ORDER BY created_at ASC",
             $conversation_id
         ));
+
+        if ($wpdb->last_error) {
+            error_log("PRP Bot: Error getting messages for conversation $conversation_id: " . $wpdb->last_error);
+        }
 
         // Parse metadata JSON for each message
         if ($messages) {
