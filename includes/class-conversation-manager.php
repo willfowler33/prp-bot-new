@@ -142,22 +142,21 @@ class PRP_Conversation_Manager {
         // Ensure table exists
         $this->ensure_tables_exist();
 
-        // Build query with optional user verification
-        $where_clause = "id = %d";
-        $params = array($conversation_id);
-
+        // Query conversation with user verification
         if ($user_id !== null) {
-            $where_clause .= " AND user_id = %d";
-            $params[] = $user_id;
+            $conversation = $wpdb->get_row($wpdb->prepare(
+                "SELECT * FROM {$this->conversations_table} WHERE id = %d AND user_id = %d",
+                $conversation_id,
+                $user_id
+            ));
+        } else {
+            $conversation = $wpdb->get_row($wpdb->prepare(
+                "SELECT * FROM {$this->conversations_table} WHERE id = %d",
+                $conversation_id
+            ));
         }
 
-        $conversation = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM {$this->conversations_table} WHERE $where_clause",
-            ...$params
-        ));
-
         if (!$conversation) {
-            error_log("PRP Bot: Conversation $conversation_id not found for user $user_id. Last error: " . $wpdb->last_error);
             return null;
         }
 

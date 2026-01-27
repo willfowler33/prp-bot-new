@@ -818,28 +818,32 @@ class TCP_Tech_Bot_Chat {
      * AJAX: Get a specific conversation with messages
      */
     public function ajax_get_conversation() {
-        check_ajax_referer('prp_chat_nonce', 'nonce');
+        try {
+            check_ajax_referer('prp_chat_nonce', 'nonce');
 
-        if (!is_user_logged_in()) {
-            wp_send_json_error('Not logged in');
-            return;
+            if (!is_user_logged_in()) {
+                wp_send_json_error('Not logged in');
+                return;
+            }
+
+            $conversation_id = isset($_POST['conversation_id']) ? intval($_POST['conversation_id']) : 0;
+            if (!$conversation_id) {
+                wp_send_json_error('Invalid conversation ID');
+                return;
+            }
+
+            $user_id = get_current_user_id();
+            $conversation = $this->conversation_manager->get_conversation($conversation_id, $user_id);
+
+            if (!$conversation) {
+                wp_send_json_error('Conversation not found or no messages');
+                return;
+            }
+
+            wp_send_json_success(array('conversation' => $conversation));
+        } catch (Exception $e) {
+            wp_send_json_error('Server error: ' . $e->getMessage());
         }
-
-        $conversation_id = isset($_POST['conversation_id']) ? intval($_POST['conversation_id']) : 0;
-        if (!$conversation_id) {
-            wp_send_json_error('Invalid conversation ID');
-            return;
-        }
-
-        $user_id = get_current_user_id();
-        $conversation = $this->conversation_manager->get_conversation($conversation_id, $user_id);
-
-        if (!$conversation) {
-            wp_send_json_error('Conversation not found');
-            return;
-        }
-
-        wp_send_json_success(array('conversation' => $conversation));
     }
 
     /**
