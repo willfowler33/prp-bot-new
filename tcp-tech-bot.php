@@ -13,31 +13,38 @@ if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly
 }
 
-// Include the Conversation Manager
+// Include the Conversation Manager and Bot Manager
 require_once plugin_dir_path(__FILE__) . 'includes/class-conversation-manager.php';
+require_once plugin_dir_path(__FILE__) . 'includes/class-bot-manager.php';
 
 class TCP_Tech_Bot_Chat {
 
     private $option_name = 'tcp_tech_bot_settings';
     private $table_name;
     private $conversation_manager;
+    private $bot_manager;
 
     public function __construct() {
         global $wpdb;
         $this->table_name = $wpdb->prefix . 'tcp_tech_chat_logs';
         $this->conversation_manager = new PRP_Conversation_Manager();
+        $this->bot_manager = new PRP_Bot_Manager();
 
-        // Installation hook
+        // Installation hooks
         register_activation_hook(__FILE__, array($this, 'create_database_table'));
         register_activation_hook(__FILE__, array($this->conversation_manager, 'create_tables'));
+        register_activation_hook(__FILE__, array($this->bot_manager, 'create_tables'));
 
         // Admin hooks
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_init', array($this, 'register_settings'));
         add_action('admin_init', array($this, 'maybe_create_table'));
+        add_action('admin_init', array($this->bot_manager, 'maybe_migrate_legacy_settings'));
 
-        // CSV Export action - must be registered early
+        // Admin form handlers
         add_action('admin_post_export_chat_logs_csv', array($this, 'export_chat_logs_csv'));
+        add_action('admin_post_prp_save_bot', array($this, 'handle_save_bot'));
+        add_action('admin_post_prp_delete_bot', array($this, 'handle_delete_bot'));
 
         // Frontend hooks
         add_shortcode('tcp_tech_chat', array($this, 'chat_shortcode'));
@@ -59,6 +66,7 @@ class TCP_Tech_Bot_Chat {
         add_action('wp_ajax_tcp_delete_conversation', array($this, 'ajax_delete_conversation'));
         add_action('wp_ajax_tcp_rename_conversation', array($this, 'ajax_rename_conversation'));
         add_action('wp_ajax_tcp_fullscreen_chat', array($this, 'handle_fullscreen_chat_request'));
+        add_action('wp_ajax_prp_get_accessible_bots', array($this, 'ajax_get_accessible_bots'));
     }
 
     public function maybe_create_table() {
@@ -67,8 +75,9 @@ class TCP_Tech_Bot_Chat {
         if (!$table_exists) {
             $this->create_database_table();
         }
-        // Also ensure conversations table exists
+        // Also ensure conversations and bot tables exist
         $this->conversation_manager->create_tables();
+        $this->bot_manager->create_tables();
     }
 
     public function create_database_table() {
@@ -98,9 +107,27 @@ class TCP_Tech_Bot_Chat {
             'PRP Bot',
             'manage_options',
             'tcp-tech-bot',
-            array($this, 'settings_page'),
+            array($this, 'manage_bots_page'),
             'dashicons-format-chat',
             30
+        );
+
+        add_submenu_page(
+            'tcp-tech-bot',
+            'Manage Bots',
+            'Manage Bots',
+            'manage_options',
+            'tcp-tech-bot',
+            array($this, 'manage_bots_page')
+        );
+
+        add_submenu_page(
+            'tcp-tech-bot',
+            'Widget Settings',
+            'Widget Settings',
+            'manage_options',
+            'tcp-tech-bot-settings',
+            array($this, 'settings_page')
         );
 
         add_submenu_page(
@@ -111,6 +138,337 @@ class TCP_Tech_Bot_Chat {
             'tcp-tech-chat-logs',
             array($this, 'chat_logs_page')
         );
+    }
+
+    /**
+     * Admin page: Manage Bots (list, add, edit views)
+     */
+    public function manage_bots_page() {
+        if (!current_user_can('manage_options')) {
+            return;
+        }
+
+        $action = isset($_GET['action']) ? sanitize_text_field($_GET['action']) : 'list';
+        $bot_id = isset($_GET['bot_id']) ? intval($_GET['bot_id']) : 0;
+
+        if ($action === 'add' || ($action === 'edit' && $bot_id > 0)) {
+            $this->render_bot_form($action, $bot_id);
+        } else {
+            $this->render_bots_list();
+        }
+    }
+
+    private function render_bots_list() {
+        $bots = $this->bot_manager->get_all_bots();
+
+        $saved   = isset($_GET['saved'])   && $_GET['saved']   === '1';
+        $deleted = isset($_GET['deleted']) && $_GET['deleted'] === '1';
+        $error   = isset($_GET['error'])   ? sanitize_text_field($_GET['error']) : '';
+        ?>
+        <div class="wrap">
+            <h1 class="wp-heading-inline">Manage Bots</h1>
+            <a href="<?php echo esc_url(admin_url('admin.php?page=tcp-tech-bot&action=add')); ?>" class="page-title-action">Add New Bot</a>
+            <hr class="wp-header-end">
+
+            <?php if ($saved): ?>
+                <div class="notice notice-success is-dismissible"><p>Bot saved successfully.</p></div>
+            <?php endif; ?>
+            <?php if ($deleted): ?>
+                <div class="notice notice-success is-dismissible"><p>Bot deleted.</p></div>
+            <?php endif; ?>
+            <?php if ($error === 'missing_fields'): ?>
+                <div class="notice notice-error is-dismissible"><p>Name and API Key are required.</p></div>
+            <?php endif; ?>
+
+            <?php if (empty($bots)): ?>
+                <p>No bots configured yet. <a href="<?php echo esc_url(admin_url('admin.php?page=tcp-tech-bot&action=add')); ?>">Add your first bot</a>.</p>
+            <?php else: ?>
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>API Key</th>
+                            <th>Project ID</th>
+                            <th>Roles</th>
+                            <th>Users</th>
+                            <th style="width:60px;">Active</th>
+                            <th style="width:130px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($bots as $bot): ?>
+                            <?php
+                            $access = $this->bot_manager->get_bot_access($bot->id);
+                            $roles_display = !empty($access['roles']) ? implode(', ', $access['roles']) : '—';
+                            $users_count   = count($access['users']);
+                            $masked_key = strlen($bot->api_key) > 8
+                                ? str_repeat('•', max(0, strlen($bot->api_key) - 8)) . substr($bot->api_key, -8)
+                                : $bot->api_key;
+                            $delete_url = wp_nonce_url(
+                                admin_url('admin-post.php?action=prp_delete_bot&bot_id=' . $bot->id),
+                                'prp_delete_bot_' . $bot->id
+                            );
+                            ?>
+                            <tr>
+                                <td><strong><?php echo esc_html($bot->name); ?></strong></td>
+                                <td><code><?php echo esc_html($masked_key); ?></code></td>
+                                <td><?php echo $bot->project_id ? esc_html($bot->project_id) : '—'; ?></td>
+                                <td><?php echo esc_html($roles_display); ?></td>
+                                <td><?php echo $users_count > 0 ? $users_count . ' user' . ($users_count !== 1 ? 's' : '') : '—'; ?></td>
+                                <td>
+                                    <?php if ($bot->is_active): ?>
+                                        <span style="color:#00a32a;font-weight:bold;">Yes</span>
+                                    <?php else: ?>
+                                        <span style="color:#d63638;">No</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <a href="<?php echo esc_url(admin_url('admin.php?page=tcp-tech-bot&action=edit&bot_id=' . $bot->id)); ?>">Edit</a>
+                                    &nbsp;|&nbsp;
+                                    <a href="<?php echo esc_url($delete_url); ?>"
+                                       onclick="return confirm('Delete this bot? This cannot be undone.');"
+                                       style="color:#d63638;">Delete</a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    private function render_bot_form($action, $bot_id) {
+        $bot    = null;
+        $access = array('roles' => array(), 'users' => array());
+
+        if ($action === 'edit' && $bot_id > 0) {
+            $bot = $this->bot_manager->get_bot($bot_id);
+            if (!$bot) {
+                echo '<div class="wrap"><p>Bot not found.</p></div>';
+                return;
+            }
+            $access = $this->bot_manager->get_bot_access($bot_id);
+        }
+
+        $all_roles = wp_roles()->roles;
+
+        // Build user logins string from user IDs
+        $user_logins = '';
+        if (!empty($access['users'])) {
+            $login_lines = array();
+            foreach ($access['users'] as $uid) {
+                $u = get_userdata($uid);
+                if ($u) {
+                    $login_lines[] = $u->user_login;
+                }
+            }
+            $user_logins = implode("\n", $login_lines);
+        }
+
+        $error = isset($_GET['error']) ? sanitize_text_field($_GET['error']) : '';
+        ?>
+        <div class="wrap">
+            <h1><?php echo $action === 'add' ? 'Add New Bot' : 'Edit Bot'; ?></h1>
+            <a href="<?php echo esc_url(admin_url('admin.php?page=tcp-tech-bot')); ?>">&larr; Back to Bots</a>
+
+            <?php if ($error === 'missing_fields'): ?>
+                <div class="notice notice-error"><p>Name and API Key are required.</p></div>
+            <?php endif; ?>
+
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                <input type="hidden" name="action" value="prp_save_bot">
+                <input type="hidden" name="bot_id" value="<?php echo intval($bot_id); ?>">
+                <?php wp_nonce_field('prp_save_bot'); ?>
+
+                <table class="form-table" role="presentation">
+                    <tbody>
+                        <tr>
+                            <th scope="row"><label for="prp_bot_name">Bot Name <span style="color:red;">*</span></label></th>
+                            <td>
+                                <input type="text" id="prp_bot_name" name="prp_bot_name" class="regular-text"
+                                    value="<?php echo $bot ? esc_attr($bot->name) : ''; ?>" required>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="prp_bot_active">Active</label></th>
+                            <td>
+                                <input type="checkbox" id="prp_bot_active" name="prp_bot_active" value="1"
+                                    <?php checked(!$bot || $bot->is_active); ?>>
+                                <label for="prp_bot_active">Enable this bot</label>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="prp_bot_sort_order">Sort Order</label></th>
+                            <td>
+                                <input type="number" id="prp_bot_sort_order" name="prp_bot_sort_order" min="0" class="small-text"
+                                    value="<?php echo $bot ? intval($bot->sort_order) : 0; ?>">
+                                <p class="description">Lower numbers appear first in the selector.</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h2>Skald API Credentials</h2>
+                <table class="form-table" role="presentation">
+                    <tbody>
+                        <tr>
+                            <th scope="row"><label for="prp_bot_api_key">API Key <span style="color:red;">*</span></label></th>
+                            <td>
+                                <input type="password" id="prp_bot_api_key" name="prp_bot_api_key" class="regular-text"
+                                    value="<?php echo $bot ? esc_attr($bot->api_key) : ''; ?>" required>
+                                <p class="description">Your Skald API key (format: sk_proj_...)</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="prp_bot_project_id">Project ID</label></th>
+                            <td>
+                                <input type="text" id="prp_bot_project_id" name="prp_bot_project_id" class="regular-text"
+                                    value="<?php echo $bot ? esc_attr($bot->project_id) : ''; ?>">
+                                <p class="description">Optional if using a project API key.</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h2>Chat Behavior</h2>
+                <table class="form-table" role="presentation">
+                    <tbody>
+                        <tr>
+                            <th scope="row"><label for="prp_bot_welcome">Welcome Message</label></th>
+                            <td>
+                                <textarea id="prp_bot_welcome" name="prp_bot_welcome" rows="3" class="large-text"><?php echo $bot ? esc_textarea($bot->welcome_message) : ''; ?></textarea>
+                                <p class="description">Shown to users on the empty chat screen.</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="prp_bot_prompt">System Prompt</label></th>
+                            <td>
+                                <textarea id="prp_bot_prompt" name="prp_bot_prompt" rows="6" class="large-text"><?php echo $bot ? esc_textarea($bot->system_prompt) : ''; ?></textarea>
+                                <p class="description">Custom instructions for the AI (optional).</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h2>Access Control</h2>
+                <table class="form-table" role="presentation">
+                    <tbody>
+                        <tr>
+                            <th scope="row">Grant Access by Role</th>
+                            <td>
+                                <?php foreach ($all_roles as $role_slug => $role_data): ?>
+                                    <label style="display:block;margin-bottom:6px;">
+                                        <input type="checkbox" name="prp_bot_roles[]" value="<?php echo esc_attr($role_slug); ?>"
+                                            <?php checked(in_array($role_slug, $access['roles'], true)); ?>>
+                                        <?php echo esc_html(translate_user_role($role_data['name'])); ?>
+                                        <span style="color:#888;font-size:12px;">(<?php echo esc_html($role_slug); ?>)</span>
+                                    </label>
+                                <?php endforeach; ?>
+                                <p class="description">Users with any checked role can access this bot.</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="prp_bot_user_logins">Specific Users</label></th>
+                            <td>
+                                <textarea id="prp_bot_user_logins" name="prp_bot_user_logins" rows="4" class="large-text"><?php echo esc_textarea($user_logins); ?></textarea>
+                                <p class="description">Enter WordPress usernames or email addresses, one per line. These users get access regardless of role.</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <?php submit_button($action === 'add' ? 'Add Bot' : 'Save Changes'); ?>
+            </form>
+        </div>
+        <?php
+    }
+
+    /**
+     * Handle bot save (add or edit)
+     */
+    public function handle_save_bot() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized', 403);
+        }
+
+        check_admin_referer('prp_save_bot');
+
+        $bot_id = isset($_POST['bot_id']) ? intval($_POST['bot_id']) : 0;
+        $is_new = ($bot_id === 0);
+
+        $data = array(
+            'name'            => sanitize_text_field($_POST['prp_bot_name']       ?? ''),
+            'api_key'         => sanitize_text_field($_POST['prp_bot_api_key']    ?? ''),
+            'project_id'      => sanitize_text_field($_POST['prp_bot_project_id'] ?? ''),
+            'welcome_message' => sanitize_textarea_field($_POST['prp_bot_welcome'] ?? ''),
+            'system_prompt'   => sanitize_textarea_field($_POST['prp_bot_prompt']  ?? ''),
+            'sort_order'      => intval($_POST['prp_bot_sort_order'] ?? 0),
+            'is_active'       => isset($_POST['prp_bot_active']) ? 1 : 0,
+        );
+
+        if (empty($data['name']) || empty($data['api_key'])) {
+            $action = $is_new ? 'add' : 'edit';
+            wp_redirect(add_query_arg(
+                array('page' => 'tcp-tech-bot', 'action' => $action, 'bot_id' => $bot_id, 'error' => 'missing_fields'),
+                admin_url('admin.php')
+            ));
+            exit;
+        }
+
+        if ($is_new) {
+            $bot_id = $this->bot_manager->create_bot($data);
+        } else {
+            $this->bot_manager->update_bot($bot_id, $data);
+        }
+
+        // Process roles
+        $roles = isset($_POST['prp_bot_roles']) ? array_map('sanitize_text_field', (array) $_POST['prp_bot_roles']) : array();
+
+        // Resolve user logins/emails to IDs
+        $user_ids   = array();
+        $raw_logins = sanitize_textarea_field($_POST['prp_bot_user_logins'] ?? '');
+        $lines      = array_filter(array_map('trim', explode("\n", $raw_logins)));
+
+        foreach ($lines as $login) {
+            $u = get_user_by('login', $login);
+            if (!$u) {
+                $u = get_user_by('email', $login);
+            }
+            if ($u) {
+                $user_ids[] = $u->ID;
+            }
+        }
+
+        $this->bot_manager->set_bot_access($bot_id, $roles, $user_ids);
+
+        wp_redirect(add_query_arg(
+            array('page' => 'tcp-tech-bot', 'saved' => '1'),
+            admin_url('admin.php')
+        ));
+        exit;
+    }
+
+    /**
+     * Handle bot deletion
+     */
+    public function handle_delete_bot() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized', 403);
+        }
+
+        $bot_id = isset($_GET['bot_id']) ? intval($_GET['bot_id']) : 0;
+        check_admin_referer('prp_delete_bot_' . $bot_id);
+
+        if ($bot_id > 0) {
+            $this->bot_manager->delete_bot($bot_id);
+        }
+
+        wp_redirect(add_query_arg(
+            array('page' => 'tcp-tech-bot', 'deleted' => '1'),
+            admin_url('admin.php')
+        ));
+        exit;
     }
 
     public function export_chat_logs_csv() {
@@ -802,7 +1160,15 @@ class TCP_Tech_Bot_Chat {
         }
 
         $user_id = get_current_user_id();
-        $conversation_id = $this->conversation_manager->create_conversation($user_id);
+        $bot_id  = isset($_POST['bot_id']) ? intval($_POST['bot_id']) : 0;
+
+        // Validate bot access if bot_id provided
+        if ($bot_id && !$this->bot_manager->user_can_access_bot($user_id, $bot_id)) {
+            wp_send_json_error('Access denied to this bot');
+            return;
+        }
+
+        $conversation_id = $this->conversation_manager->create_conversation($user_id, null, $bot_id ?: null);
 
         if ($conversation_id === false) {
             wp_send_json_error('Failed to create conversation');
@@ -812,6 +1178,36 @@ class TCP_Tech_Bot_Chat {
         $conversation = $this->conversation_manager->get_conversation($conversation_id, $user_id);
 
         wp_send_json_success(array('conversation' => $conversation));
+    }
+
+    /**
+     * AJAX: Return all bots the current user can access (fullscreen chat)
+     */
+    public function ajax_get_accessible_bots() {
+        check_ajax_referer('prp_chat_nonce', 'nonce');
+
+        if (!is_user_logged_in()) {
+            wp_send_json_error('Not logged in');
+            return;
+        }
+
+        $user_id = get_current_user_id();
+        $bots    = $this->bot_manager->get_bots_for_user($user_id);
+
+        $formatted = array_map(function($bot) {
+            return array(
+                'id'              => (int) $bot->id,
+                'name'            => $bot->name,
+                'welcome_message' => $bot->welcome_message,
+            );
+        }, $bots);
+
+        $formatted = array_values($formatted);
+
+        wp_send_json_success(array(
+            'bots'           => $formatted,
+            'default_bot_id' => !empty($formatted) ? $formatted[0]['id'] : null,
+        ));
     }
 
     /**
@@ -920,16 +1316,38 @@ class TCP_Tech_Bot_Chat {
             return;
         }
 
-        $start_time = microtime(true);
-        $message = sanitize_textarea_field($_POST['message']);
+        $start_time      = microtime(true);
+        $message         = sanitize_textarea_field($_POST['message']);
+        $user_id         = get_current_user_id();
+        $conversation_id = isset($_POST['conversation_id']) ? intval($_POST['conversation_id']) : 0;
+        $bot_id          = isset($_POST['bot_id']) ? intval($_POST['bot_id']) : 0;
 
         if (empty(trim($message))) {
             wp_send_json_error('Message content cannot be empty');
             return;
         }
 
-        $user_id = get_current_user_id();
-        $conversation_id = isset($_POST['conversation_id']) ? intval($_POST['conversation_id']) : 0;
+        // Resolve which bot to use
+        if (!$bot_id) {
+            $bots = $this->bot_manager->get_bots_for_user($user_id);
+            if (empty($bots)) {
+                wp_send_json_error('No bots are available to you. Please contact an administrator.');
+                return;
+            }
+            $bot    = $bots[0];
+            $bot_id = (int) $bot->id;
+        } else {
+            if (!$this->bot_manager->user_can_access_bot($user_id, $bot_id)) {
+                wp_send_json_error('Access denied to this bot');
+                return;
+            }
+            $bot = $this->bot_manager->get_bot($bot_id);
+        }
+
+        if (!$bot || empty($bot->api_key)) {
+            wp_send_json_error('Bot not configured. Please add an API key in the admin.');
+            return;
+        }
 
         // Verify conversation ownership
         if ($conversation_id && !$this->conversation_manager->user_owns_conversation($conversation_id, $user_id)) {
@@ -939,7 +1357,7 @@ class TCP_Tech_Bot_Chat {
 
         // Create new conversation if not provided
         if (!$conversation_id) {
-            $conversation_id = $this->conversation_manager->create_conversation($user_id);
+            $conversation_id = $this->conversation_manager->create_conversation($user_id, null, $bot_id);
             if (!$conversation_id) {
                 wp_send_json_error('Failed to create conversation');
                 return;
@@ -948,50 +1366,34 @@ class TCP_Tech_Bot_Chat {
 
         // Check if this is the first message in the conversation
         $existing_messages = $this->conversation_manager->get_conversation_messages($conversation_id);
-        $is_first_message = empty($existing_messages);
+        $is_first_message  = empty($existing_messages);
 
-        $options = get_option($this->option_name);
-        $api_key = isset($options['api_key']) ? $options['api_key'] : '';
-        $project_id = isset($options['project_id']) ? $options['project_id'] : '';
-        $system_prompt = isset($options['system_prompt']) ? $options['system_prompt'] : '';
-
-        if (empty($api_key)) {
-            wp_send_json_error('API key not configured');
-            return;
-        }
-
-        // Make API request to Skald
-        $url = "https://api.useskald.com/api/v1/chat";
-
+        // Make API request to Skald using bot-specific credentials
+        $url  = 'https://api.useskald.com/api/v1/chat';
         $body = array(
-            'query' => $message,
-            'stream' => false,
+            'query'      => $message,
+            'stream'     => false,
             'rag_config' => array(
-                'references' => array(
-                    'enabled' => true
-                ),
-                'reranking' => array(
-                    'enabled' => true,
-                    'topK' => 10
-                )
-            )
+                'references' => array('enabled' => true),
+                'reranking'  => array('enabled' => true, 'topK' => 10),
+            ),
         );
 
-        if (!empty($system_prompt)) {
-            $body['system_prompt'] = $system_prompt;
+        if (!empty($bot->system_prompt)) {
+            $body['system_prompt'] = $bot->system_prompt;
         }
 
-        if (!empty($project_id)) {
-            $body['project_id'] = $project_id;
+        if (!empty($bot->project_id)) {
+            $body['project_id'] = $bot->project_id;
         }
 
         $response = wp_remote_post($url, array(
             'headers' => array(
-                'Authorization' => 'Bearer ' . $api_key,
-                'Content-Type' => 'application/json'
+                'Authorization' => 'Bearer ' . $bot->api_key,
+                'Content-Type'  => 'application/json',
             ),
-            'body' => json_encode($body),
-            'timeout' => 60
+            'body'    => json_encode($body),
+            'timeout' => 60,
         ));
 
         if (is_wp_error($response)) {
@@ -1011,7 +1413,7 @@ class TCP_Tech_Bot_Chat {
 
         if (isset($data['ok']) && $data['ok'] === true && isset($data['response'])) {
             $assistant_message = $data['response'];
-            $response_time = microtime(true) - $start_time;
+            $response_time     = microtime(true) - $start_time;
 
             // Extract references
             $references = array();
@@ -1026,8 +1428,8 @@ class TCP_Tech_Bot_Chat {
             }
 
             $metadata = array(
-                'references' => $references,
-                'full_response' => $data
+                'references'    => $references,
+                'full_response' => $data,
             );
 
             // Log to conversation
@@ -1049,11 +1451,12 @@ class TCP_Tech_Bot_Chat {
             $conversation = $this->conversation_manager->get_conversation($conversation_id, $user_id);
 
             wp_send_json_success(array(
-                'message' => $assistant_message,
-                'conversation_id' => $conversation_id,
-                'conversation_title' => $conversation ? $conversation->title : 'New Chat',
-                'references' => is_array($references) ? array_values($references) : array(),
-                'is_new_conversation' => $is_first_message
+                'message'             => $assistant_message,
+                'conversation_id'     => $conversation_id,
+                'conversation_title'  => $conversation ? $conversation->title : 'New Chat',
+                'references'          => is_array($references) ? array_values($references) : array(),
+                'is_new_conversation' => $is_first_message,
+                'bot_id'              => $bot_id,
             ));
         } else {
             wp_send_json_error('Invalid API response');

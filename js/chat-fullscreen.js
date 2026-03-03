@@ -26,6 +26,12 @@ jQuery(document).ready(function($) {
             this.isProcessing = false;
             this.isMobile = window.innerWidth <= 768;
 
+            // Multi-bot state
+            this.currentBotId   = null;
+            this.accessibleBots = [];
+            this.botSelector    = this.app.find('.prp-bot-selector');
+            this.botSelectorWrap = this.app.find('.prp-chat-header-right');
+
             // Product manual URL mapping (same as widget)
             this.documentUrls = {
                 'cp graniflex manual': 'https://49577885.fs1.hubspotusercontent-na1.net/hubfs/49577885/Product%20System%20Manuals/CP_Graniflex_Manual_2025.pdf',
@@ -61,7 +67,7 @@ jQuery(document).ready(function($) {
 
         init() {
             this.bindEvents();
-            this.loadConversations();
+            this.loadBotsAndConversations();
             this.autoResizeTextarea();
             this.handleResize();
         }
@@ -130,6 +136,12 @@ jQuery(document).ready(function($) {
                 self.saveEditTitle(item);
             });
 
+            // Bot selector change
+            this.botSelector.on('change', (e) => {
+                const newBotId = parseInt($(e.target).val(), 10);
+                this.switchBot(newBotId);
+            });
+
             // Copy button click handler
             this.messagesContainer.on('click', '.prp-copy-btn', function(e) {
                 e.preventDefault();
@@ -182,6 +194,65 @@ jQuery(document).ready(function($) {
             const textarea = this.inputTextarea[0];
             textarea.style.height = 'auto';
             textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+        }
+
+        /**
+         * Load bots first, then conversations.
+         */
+        async loadBotsAndConversations() {
+            try {
+                const response = await this.apiCall('prp_get_accessible_bots');
+                if (response.success) {
+                    this.accessibleBots = response.data.bots || [];
+                    this.currentBotId   = response.data.default_bot_id || null;
+                    this.renderBotSelector();
+                }
+            } catch (error) {
+                console.error('Failed to load bots:', error);
+            }
+
+            await this.loadConversations();
+        }
+
+        /**
+         * Render bot selector dropdown. Hidden when user has <= 1 accessible bot.
+         */
+        renderBotSelector() {
+            if (this.accessibleBots.length <= 1) {
+                this.botSelectorWrap.hide();
+                return;
+            }
+
+            this.botSelectorWrap.show();
+            this.botSelector.empty();
+
+            this.accessibleBots.forEach(bot => {
+                const option = $('<option>')
+                    .val(bot.id)
+                    .text(bot.name);
+
+                if (bot.id === this.currentBotId) {
+                    option.prop('selected', true);
+                }
+
+                this.botSelector.append(option);
+            });
+        }
+
+        /**
+         * Switch the active bot. Updates welcome message on empty state if visible.
+         */
+        switchBot(botId) {
+            this.currentBotId = botId;
+
+            const bot = this.accessibleBots.find(b => b.id === botId);
+            if (!bot) return;
+
+            // If currently showing the empty state, update the subtitle
+            const subtitle = this.messagesContainer.find('.prp-empty-state-subtitle');
+            if (subtitle.length && bot.welcome_message) {
+                subtitle.text(bot.welcome_message);
+            }
         }
 
         /**
@@ -341,7 +412,9 @@ jQuery(document).ready(function($) {
             if (this.isProcessing) return;
 
             try {
-                const response = await this.apiCall('tcp_create_conversation');
+                const response = await this.apiCall('tcp_create_conversation', {
+                    bot_id: this.currentBotId || ''
+                });
                 if (response.success && response.data.conversation) {
                     const conv = response.data.conversation;
                     this.conversations.unshift(conv);
@@ -392,7 +465,8 @@ jQuery(document).ready(function($) {
             try {
                 const response = await this.apiCall('tcp_fullscreen_chat', {
                     message: message,
-                    conversation_id: this.currentConversationId || ''
+                    conversation_id: this.currentConversationId || '',
+                    bot_id: this.currentBotId || ''
                 });
 
                 this.hideTypingIndicator();
@@ -548,13 +622,18 @@ jQuery(document).ready(function($) {
          * Show empty state for new chat
          */
         showEmptyState() {
+            const bot = this.accessibleBots.find(b => b.id === this.currentBotId);
+            const welcomeText = (bot && bot.welcome_message)
+                ? bot.welcome_message
+                : prpChat.welcomeMessage;
+
             const emptyHtml = `
                 <div class="prp-empty-state">
                     <svg class="prp-empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                     </svg>
                     <h2 class="prp-empty-state-title">How can I help you today?</h2>
-                    <p class="prp-empty-state-subtitle">${prpChat.welcomeMessage}</p>
+                    <p class="prp-empty-state-subtitle">${this.escapeHtml(welcomeText)}</p>
                 </div>
             `;
             this.messagesContainer.html(emptyHtml);

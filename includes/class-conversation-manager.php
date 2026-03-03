@@ -80,21 +80,27 @@ class PRP_Conversation_Manager {
     /**
      * Create a new conversation
      *
-     * @param int $user_id WordPress user ID
-     * @param string|null $title Optional conversation title
+     * @param int         $user_id WordPress user ID
+     * @param string|null $title   Optional conversation title
+     * @param int|null    $bot_id  Optional bot ID for this conversation
      * @return int|false Conversation ID or false on failure
      */
-    public function create_conversation($user_id, $title = null) {
+    public function create_conversation($user_id, $title = null, $bot_id = null) {
         global $wpdb;
 
-        $result = $wpdb->insert(
-            $this->conversations_table,
-            array(
-                'user_id' => $user_id,
-                'title' => $title ?: 'New Chat'
-            ),
-            array('%d', '%s')
-        );
+        $data    = array( 'user_id' => $user_id, 'title' => $title ?: 'New Chat' );
+        $formats = array( '%d', '%s' );
+
+        // Include bot_id if column exists and value provided
+        if ( $bot_id !== null ) {
+            $col = $wpdb->get_results( "SHOW COLUMNS FROM {$this->conversations_table} LIKE 'bot_id'" );
+            if ( ! empty( $col ) ) {
+                $data['bot_id'] = intval( $bot_id );
+                $formats[]      = '%d';
+            }
+        }
+
+        $result = $wpdb->insert( $this->conversations_table, $data, $formats );
 
         if ($result === false) {
             error_log('PRP Bot: Failed to create conversation - ' . $wpdb->last_error);

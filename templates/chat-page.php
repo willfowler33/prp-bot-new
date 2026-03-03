@@ -94,6 +94,12 @@ $user = wp_get_current_user();
                 </button>
                 <h1 class="prp-conversation-title">New Chat</h1>
             </div>
+            <!-- Bot selector: JS shows this only when user has access to 2+ bots -->
+            <div class="prp-chat-header-right" style="display:none;">
+                <select class="prp-bot-selector" aria-label="Select bot">
+                    <!-- Populated by JS after fetching accessible bots -->
+                </select>
+            </div>
         </header>
 
         <div class="prp-messages-container">
