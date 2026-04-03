@@ -463,37 +463,97 @@ jQuery(document).ready(function($) {
             this.scrollToBottom();
 
             try {
-                const response = await this.apiCall('tcp_fullscreen_chat', {
-                    message: message,
-                    conversation_id: this.currentConversationId || '',
-                    bot_id: this.currentBotId || ''
+                // Build form data for the streaming POST
+                const formData = new FormData();
+                formData.append('action', 'tcp_fullscreen_chat_stream');
+                formData.append('nonce', prpChat.nonce);
+                formData.append('message', message);
+                formData.append('conversation_id', this.currentConversationId || '');
+                formData.append('bot_id', this.currentBotId || '');
+
+                const response = await fetch(prpChat.ajaxurl, {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'same-origin',
                 });
 
                 this.hideTypingIndicator();
 
-                if (response.success) {
-                    // Update conversation ID if new
-                    if (response.data.conversation_id && !this.currentConversationId) {
-                        this.currentConversationId = response.data.conversation_id;
+                if (!response.ok) {
+                    this.showError('Failed to get response');
+                    return;
+                }
+
+                // Create the assistant message shell for streaming
+                const { contentEl, wrapperEl } = this.addStreamingMessage();
+                let fullText = '';
+                let metaData = null;
+
+                // Read the SSE stream
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // Keep incomplete line in buffer
+
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed.startsWith('data: ')) continue;
+
+                        try {
+                            const event = JSON.parse(trimmed.substring(6));
+
+                            if (event.type === 'token' && event.content) {
+                                fullText += event.content;
+                                contentEl.innerHTML = this.formatMessage(
+                                    fullText.replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '').trim()
+                                );
+                                this.scrollToBottom();
+                            } else if (event.type === 'meta') {
+                                metaData = event;
+                            } else if (event.type === 'error') {
+                                this.showError(event.content || 'Streaming error');
+                            }
+                        } catch (e) {
+                            // Skip malformed JSON lines
+                        }
+                    }
+                }
+
+                // Process meta data (conversation state, references)
+                if (metaData) {
+                    if (metaData.conversation_id && !this.currentConversationId) {
+                        this.currentConversationId = metaData.conversation_id;
                     }
 
-                    // Update title if changed
-                    if (response.data.conversation_title) {
-                        this.conversationTitle.text(response.data.conversation_title);
-
-                        // Update in list
+                    if (metaData.conversation_title) {
+                        this.conversationTitle.text(metaData.conversation_title);
                         const conv = this.conversations.find(c => c.id == this.currentConversationId);
                         if (conv) {
-                            conv.title = response.data.conversation_title;
+                            conv.title = metaData.conversation_title;
                         }
                         this.renderConversationList();
                     }
 
-                    // Add assistant message
-                    this.addMessage('assistant', response.data.message, response.data.references);
-                } else {
-                    this.showError(response.data || 'Failed to get response');
+                    // Finalize the message with references
+                    if (metaData.references && metaData.references.length > 0) {
+                        this.finalizeStreamedMessage(wrapperEl, fullText, metaData.references);
+                    }
+
+                    if (metaData.is_new_conversation) {
+                        this.loadConversations();
+                    }
                 }
+
+                // Add copy button and actions
+                this.addStreamingMessageActions(wrapperEl, fullText);
+
             } catch (error) {
                 this.hideTypingIndicator();
                 this.showError('Network error. Please try again.');
@@ -504,6 +564,95 @@ jQuery(document).ready(function($) {
                 this.inputTextarea.prop('disabled', false);
                 this.inputTextarea.focus();
                 this.scrollToBottom();
+            }
+        }
+
+        /**
+         * Create an empty assistant message shell for streaming tokens into
+         */
+        addStreamingMessage() {
+            const avatarInitial = 'P';
+            const roleLabel = 'PRP Bot';
+
+            const wrapperEl = document.createElement('div');
+            wrapperEl.className = 'prp-message-wrapper';
+            wrapperEl.innerHTML = `
+                <div class="prp-message assistant">
+                    <div class="prp-message-header">
+                        <div class="prp-message-avatar">${avatarInitial}</div>
+                        <div class="prp-message-role">${roleLabel}</div>
+                    </div>
+                    <div class="prp-message-content">
+                        <p></p>
+                    </div>
+                </div>
+            `;
+
+            this.messagesContainer.append(wrapperEl);
+            const contentEl = wrapperEl.querySelector('.prp-message-content');
+            return { contentEl, wrapperEl };
+        }
+
+        /**
+         * Add references to a streamed message after stream completes
+         */
+        finalizeStreamedMessage(wrapperEl, fullText, references) {
+            const uniqueRefs = this.getUniqueReferences(references);
+            if (uniqueRefs.length === 0) return;
+
+            let formattedContent = this.formatMessage(
+                fullText.replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '').trim()
+            );
+
+            const usedRefs = new Set();
+            formattedContent = formattedContent.replace(/\[\[(\d+)\]\]|\[(\d+)\]/g, (match, num1, num2) => {
+                const refNum = parseInt(num1 || num2);
+                if (refNum >= 1 && refNum <= uniqueRefs.length) {
+                    usedRefs.add(refNum);
+                    return `<sup>${refNum}</sup>`;
+                }
+                return '';
+            });
+
+            const contentEl = wrapperEl.querySelector('.prp-message-content');
+            contentEl.innerHTML = formattedContent;
+
+            if (usedRefs.size > 0) {
+                const sortedRefs = Array.from(usedRefs).sort((a, b) => a - b);
+                let refItems = sortedRefs.map(refNum => {
+                    const ref = uniqueRefs[refNum - 1];
+                    const title = ref.memo_title || ref.title || ref.name || '';
+                    return `<div class="prp-ref-item">[${refNum}] ${this.escapeHtml(title)}</div>`;
+                }).join('');
+                contentEl.innerHTML += `<div class="prp-references-section">${refItems}</div>`;
+            }
+        }
+
+        /**
+         * Add copy button to a streamed message
+         */
+        addStreamingMessageActions(wrapperEl, fullText) {
+            const rawContent = fullText
+                .replace(/\[\[\d+\]\]/g, '')
+                .replace(/\[\d+\]/g, '')
+                .replace(/<[^>]+>/g, '')
+                .trim();
+
+            const actionsHtml = `
+                <div class="prp-message-actions">
+                    <button class="prp-copy-btn" data-content="${this.escapeHtml(rawContent).replace(/"/g, '&quot;')}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        <span>Copy</span>
+                    </button>
+                </div>
+            `;
+
+            const msgEl = wrapperEl.querySelector('.prp-message');
+            if (msgEl) {
+                msgEl.insertAdjacentHTML('beforeend', actionsHtml);
             }
         }
 

@@ -323,22 +323,77 @@ jQuery(document).ready(function($) {
             this.showTypingIndicator();
 
             try {
-                const response = await this.callSkaldAPI(message);
+                // Build form data for the streaming POST
+                const formData = new FormData();
+                formData.append('action', 'tcp_tech_chat_stream');
+                formData.append('nonce', tcpTechChat.nonce);
+                formData.append('message', message);
+                formData.append('session_id', this.sessionId);
+
+                const response = await fetch(tcpTechChat.ajaxurl, {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'same-origin',
+                });
 
                 this.hideTypingIndicator();
 
-                if (response.success) {
-                    // Update session ID if provided
-                    if (response.data.session_id) {
-                        this.sessionId = response.data.session_id;
-                    }
-
-                    // Add message with references if available
-                    this.addMessage('assistant', response.data.message, true, response.data.references);
-                } else {
-                    this.hideTypingIndicator();
-                    this.showError(response.data || 'Failed to get response from assistant');
+                if (!response.ok) {
+                    this.showError('Failed to get response from assistant');
+                    return;
                 }
+
+                // Create an empty assistant message bubble for streaming
+                const { bubbleEl } = this.addStreamingMessage();
+                let fullText = '';
+
+                // Read the SSE stream
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed.startsWith('data: ')) continue;
+
+                        try {
+                            const event = JSON.parse(trimmed.substring(6));
+
+                            if (event.type === 'token' && event.content) {
+                                fullText += event.content;
+                                // Clean and render incrementally
+                                let cleanContent = fullText
+                                    .replace(/\[\[\d+\]\]/g, '')
+                                    .replace(/\[\d+\]/g, '')
+                                    .replace(/\[\s*\]/g, '')
+                                    .replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '')
+                                    .trim();
+                                bubbleEl.innerHTML = this.formatMessage(cleanContent);
+                                this.scrollToBottom();
+                            } else if (event.type === 'meta') {
+                                if (event.session_id) {
+                                    this.sessionId = event.session_id;
+                                }
+                            } else if (event.type === 'error') {
+                                this.showError(event.content || 'Streaming error');
+                            }
+                        } catch (e) {
+                            // Skip malformed JSON
+                        }
+                    }
+                }
+
+                // After stream completes, add references and footer
+                this.finalizeWidgetStreamedMessage(bubbleEl, fullText);
+
             } catch (error) {
                 this.hideTypingIndicator();
                 this.showError('Network error. Please try again.');
@@ -350,6 +405,47 @@ jQuery(document).ready(function($) {
                 this.input.prop('disabled', false);
                 this.input.focus();
             }
+        }
+
+        /**
+         * Create an empty assistant message shell for streaming tokens into
+         */
+        addStreamingMessage() {
+            const time = new Date().toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit'
+            });
+
+            const messageEl = document.createElement('div');
+            messageEl.className = 'tcp-tech-chat-message assistant';
+            messageEl.innerHTML = `
+                <div class="tcp-tech-chat-message-avatar">TT</div>
+                <div class="tcp-tech-chat-message-content">
+                    <div class="tcp-tech-chat-message-bubble"></div>
+                    <div class="tcp-tech-chat-message-time">${time}</div>
+                </div>
+            `;
+
+            this.messagesContainer.append(messageEl);
+            const bubbleEl = messageEl.querySelector('.tcp-tech-chat-message-bubble');
+            return { bubbleEl, messageEl };
+        }
+
+        /**
+         * Add footer to a streamed widget message after stream completes
+         */
+        finalizeWidgetStreamedMessage(bubbleEl, fullText) {
+            const contentEl = bubbleEl.closest('.tcp-tech-chat-message-content');
+            if (!contentEl) return;
+
+            // Add the disclaimer footer
+            const footerHtml = `<div class="tcp-tech-chat-footer">
+                While AI can be a helpful resource, it may occasionally make mistakes. If you have questions or need clarification regarding our coating systems, please contact one of our experts at <a href="tel:1-877-743-9732" class="tcp-tech-chat-reference-link">1-877-743-9732</a> or email <a href="mailto:web@theconcreteprotector.com" class="tcp-tech-chat-reference-link">web@theconcreteprotector.com</a>.<br><br>
+                For full access to technical and support documentation, visit <a href="https://theconcreteprotector.com/tcp-document-library/" target="_blank" rel="noopener noreferrer" class="tcp-tech-chat-reference-link">The Concrete Protector Document Library</a>.
+            </div>`;
+
+            // Insert footer after the bubble
+            bubbleEl.insertAdjacentHTML('afterend', footerHtml);
         }
 
         closeWindow() {

@@ -59,6 +59,10 @@ class TCP_Tech_Bot_Chat {
         add_action('wp_ajax_tcp_tech_chat', array($this, 'handle_chat_request'));
         add_action('wp_ajax_nopriv_tcp_tech_chat', array($this, 'handle_chat_request'));
 
+        // Streaming AJAX hooks - Widget (allows non-logged in users)
+        add_action('wp_ajax_tcp_tech_chat_stream', array($this, 'handle_chat_stream_request'));
+        add_action('wp_ajax_nopriv_tcp_tech_chat_stream', array($this, 'handle_chat_stream_request'));
+
         // AJAX hooks - Full-screen chat (logged-in users only)
         add_action('wp_ajax_tcp_get_conversations', array($this, 'ajax_get_conversations'));
         add_action('wp_ajax_tcp_create_conversation', array($this, 'ajax_create_conversation'));
@@ -66,6 +70,7 @@ class TCP_Tech_Bot_Chat {
         add_action('wp_ajax_tcp_delete_conversation', array($this, 'ajax_delete_conversation'));
         add_action('wp_ajax_tcp_rename_conversation', array($this, 'ajax_rename_conversation'));
         add_action('wp_ajax_tcp_fullscreen_chat', array($this, 'handle_fullscreen_chat_request'));
+        add_action('wp_ajax_tcp_fullscreen_chat_stream', array($this, 'handle_fullscreen_chat_stream_request'));
         add_action('wp_ajax_prp_get_accessible_bots', array($this, 'ajax_get_accessible_bots'));
     }
 
@@ -1461,6 +1466,314 @@ class TCP_Tech_Bot_Chat {
         } else {
             wp_send_json_error('Invalid API response');
         }
+    }
+
+    /**
+     * Stream SSE headers and disable output buffering
+     */
+    private function start_sse_stream() {
+        // Disable any output buffering
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: text/event-stream');
+        header('Cache-Control: no-cache');
+        header('Connection: keep-alive');
+        header('X-Accel-Buffering: no'); // Disable nginx buffering
+    }
+
+    /**
+     * Send an SSE event to the browser
+     */
+    private function send_sse_event($data) {
+        echo "data: " . json_encode($data) . "\n\n";
+        flush();
+    }
+
+    /**
+     * Proxy Skald streaming API via cURL and forward SSE events to the browser
+     */
+    private function proxy_skald_stream($api_key, $body) {
+        $url = 'https://api.useskald.com/api/v1/chat';
+        $body['stream'] = true;
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, array(
+            CURLOPT_POST           => true,
+            CURLOPT_HTTPHEADER     => array(
+                'Authorization: Bearer ' . $api_key,
+                'Content-Type: application/json',
+                'Accept: text/event-stream',
+            ),
+            CURLOPT_POSTFIELDS     => json_encode($body),
+            CURLOPT_RETURNTRANSFER => false,
+            CURLOPT_TIMEOUT        => 120,
+            CURLOPT_WRITEFUNCTION  => function ($ch, $chunk) {
+                // Each chunk may contain one or more SSE lines
+                $lines = explode("\n", $chunk);
+                foreach ($lines as $line) {
+                    $line = trim($line);
+                    if ($line === '' || strpos($line, ':') === 0) {
+                        // Empty line or comment (e.g. ": ping") — skip
+                        continue;
+                    }
+                    if (strpos($line, 'data: ') === 0) {
+                        $json_str = substr($line, 6);
+                        $event = json_decode($json_str, true);
+                        if ($event) {
+                            $this->send_sse_event($event);
+                        }
+                    }
+                }
+                return strlen($chunk);
+            },
+        ));
+
+        $result = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        return array('http_code' => $http_code, 'error' => $error, 'success' => $result !== false);
+    }
+
+    /**
+     * AJAX/SSE: Handle widget chat streaming request
+     */
+    public function handle_chat_stream_request() {
+        check_ajax_referer('tcp_tech_chat_nonce', 'nonce');
+
+        if (!isset($_POST['message'])) {
+            wp_send_json_error('No message provided');
+            return;
+        }
+
+        $start_time = microtime(true);
+        $message    = sanitize_textarea_field($_POST['message']);
+        $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : uniqid('session_', true);
+
+        if (empty(trim($message))) {
+            wp_send_json_error('Message content cannot be empty');
+            return;
+        }
+
+        $options       = get_option($this->option_name);
+        $api_key       = isset($options['api_key']) ? $options['api_key'] : '';
+        $project_id    = isset($options['project_id']) ? $options['project_id'] : '';
+        $system_prompt = isset($options['system_prompt']) ? $options['system_prompt'] : '';
+
+        if (empty($api_key)) {
+            wp_send_json_error('API key not configured');
+            return;
+        }
+
+        $body = array(
+            'query'      => $message,
+            'rag_config' => array(
+                'references' => array('enabled' => true),
+                'reranking'  => array('enabled' => true, 'topK' => 10),
+            ),
+        );
+
+        if (!empty($system_prompt)) {
+            $body['system_prompt'] = $system_prompt;
+        }
+        if (!empty($project_id)) {
+            $body['project_id'] = $project_id;
+        }
+
+        $this->start_sse_stream();
+        $result = $this->proxy_skald_stream($api_key, $body);
+
+        if (!$result['success'] || $result['http_code'] !== 200) {
+            $this->send_sse_event(array('type' => 'error', 'content' => 'API request failed'));
+        }
+
+        // Send metadata so the frontend can log/update state
+        $this->send_sse_event(array(
+            'type'       => 'meta',
+            'session_id' => $session_id,
+        ));
+
+        exit;
+    }
+
+    /**
+     * AJAX/SSE: Handle fullscreen chat streaming request (logged-in users only)
+     */
+    public function handle_fullscreen_chat_stream_request() {
+        check_ajax_referer('prp_chat_nonce', 'nonce');
+
+        if (!is_user_logged_in()) {
+            wp_send_json_error('Not logged in');
+            return;
+        }
+
+        if (!isset($_POST['message'])) {
+            wp_send_json_error('No message provided');
+            return;
+        }
+
+        $start_time      = microtime(true);
+        $message         = sanitize_textarea_field($_POST['message']);
+        $user_id         = get_current_user_id();
+        $conversation_id = isset($_POST['conversation_id']) ? intval($_POST['conversation_id']) : 0;
+        $bot_id          = isset($_POST['bot_id']) ? intval($_POST['bot_id']) : 0;
+
+        if (empty(trim($message))) {
+            wp_send_json_error('Message content cannot be empty');
+            return;
+        }
+
+        // Resolve which bot to use
+        if (!$bot_id) {
+            $bots = $this->bot_manager->get_bots_for_user($user_id);
+            if (empty($bots)) {
+                wp_send_json_error('No bots are available to you.');
+                return;
+            }
+            $bot    = $bots[0];
+            $bot_id = (int) $bot->id;
+        } else {
+            if (!$this->bot_manager->user_can_access_bot($user_id, $bot_id)) {
+                wp_send_json_error('Access denied to this bot');
+                return;
+            }
+            $bot = $this->bot_manager->get_bot($bot_id);
+        }
+
+        if (!$bot || empty($bot->api_key)) {
+            wp_send_json_error('Bot not configured.');
+            return;
+        }
+
+        // Verify conversation ownership
+        if ($conversation_id && !$this->conversation_manager->user_owns_conversation($conversation_id, $user_id)) {
+            wp_send_json_error('Invalid conversation');
+            return;
+        }
+
+        // Create new conversation if needed
+        $is_new_conversation = false;
+        if (!$conversation_id) {
+            $conversation_id = $this->conversation_manager->create_conversation($user_id, null, $bot_id);
+            if (!$conversation_id) {
+                wp_send_json_error('Failed to create conversation');
+                return;
+            }
+            $is_new_conversation = true;
+        }
+
+        // Check if first message
+        $existing_messages = $this->conversation_manager->get_conversation_messages($conversation_id);
+        $is_first_message  = empty($existing_messages);
+
+        $body = array(
+            'query'      => $message,
+            'rag_config' => array(
+                'references' => array('enabled' => true),
+                'reranking'  => array('enabled' => true, 'topK' => 10),
+            ),
+        );
+
+        if (!empty($bot->system_prompt)) {
+            $body['system_prompt'] = $bot->system_prompt;
+        }
+        if (!empty($bot->project_id)) {
+            $body['project_id'] = $bot->project_id;
+        }
+
+        // Start SSE stream
+        $this->start_sse_stream();
+
+        // Collect full response text for logging
+        $full_response = '';
+        $references    = array();
+
+        $url = 'https://api.useskald.com/api/v1/chat';
+        $body['stream'] = true;
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, array(
+            CURLOPT_POST           => true,
+            CURLOPT_HTTPHEADER     => array(
+                'Authorization: Bearer ' . $bot->api_key,
+                'Content-Type: application/json',
+                'Accept: text/event-stream',
+            ),
+            CURLOPT_POSTFIELDS     => json_encode($body),
+            CURLOPT_RETURNTRANSFER => false,
+            CURLOPT_TIMEOUT        => 120,
+            CURLOPT_WRITEFUNCTION  => function ($ch, $chunk) use (&$full_response, &$references) {
+                $lines = explode("\n", $chunk);
+                foreach ($lines as $line) {
+                    $line = trim($line);
+                    if ($line === '' || strpos($line, ':') === 0) {
+                        continue;
+                    }
+                    if (strpos($line, 'data: ') === 0) {
+                        $json_str = substr($line, 6);
+                        $event = json_decode($json_str, true);
+                        if ($event) {
+                            if (isset($event['type']) && $event['type'] === 'token' && isset($event['content'])) {
+                                $full_response .= $event['content'];
+                            }
+                            // Capture references if included in stream events
+                            if (isset($event['references'])) {
+                                $references = $event['references'];
+                            }
+                            $this->send_sse_event($event);
+                        }
+                    }
+                }
+                return strlen($chunk);
+            },
+        ));
+
+        curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($http_code !== 200) {
+            $this->send_sse_event(array('type' => 'error', 'content' => 'API request failed'));
+        }
+
+        // Log the complete message to conversation history
+        $response_time = microtime(true) - $start_time;
+        $metadata = array(
+            'references'    => $references,
+            'streamed'      => true,
+        );
+
+        $this->conversation_manager->log_message(
+            $conversation_id,
+            $user_id,
+            $message,
+            $full_response,
+            $response_time,
+            $metadata
+        );
+
+        // Auto-title if first message
+        if ($is_first_message) {
+            $this->conversation_manager->auto_title_conversation($conversation_id, $message);
+        }
+
+        // Get conversation for title
+        $conversation = $this->conversation_manager->get_conversation($conversation_id, $user_id);
+
+        // Send final meta event with conversation info
+        $this->send_sse_event(array(
+            'type'                => 'meta',
+            'conversation_id'     => $conversation_id,
+            'conversation_title'  => $conversation ? $conversation->title : 'New Chat',
+            'references'          => is_array($references) ? array_values($references) : array(),
+            'is_new_conversation' => $is_first_message,
+            'bot_id'              => $bot_id,
+        ));
+
+        exit;
     }
 }
 
