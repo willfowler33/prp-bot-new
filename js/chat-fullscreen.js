@@ -459,8 +459,8 @@ jQuery(document).ready(function($) {
             // Show typing indicator
             this.showTypingIndicator();
 
-            // Scroll to bottom
-            this.scrollToBottom();
+            // Force scroll to show the user's new message
+            this.scrollToBottom(true);
 
             try {
                 // Build form data for the streaming POST
@@ -829,10 +829,12 @@ jQuery(document).ready(function($) {
             this.scrollToBottom();
         }
 
-        scrollToBottom() {
-            this.messagesContainer.animate({
-                scrollTop: this.messagesContainer[0].scrollHeight
-            }, 300);
+        scrollToBottom(force = false) {
+            const el = this.messagesContainer[0];
+            const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+            if (force || nearBottom) {
+                el.scrollTop = el.scrollHeight;
+            }
         }
 
         /**
