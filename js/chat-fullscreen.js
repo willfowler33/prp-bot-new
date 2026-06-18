@@ -512,7 +512,7 @@ jQuery(document).ready(function($) {
                             if (event.type === 'token' && event.content) {
                                 fullText += event.content;
                                 contentEl.innerHTML = this.formatMessage(
-                                    fullText.replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '').trim()
+                                    fullText.replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '').replace(/https?:\/\/skald\.theconcreteprotector\.com\/[^\s]*/g, '').trim()
                                 );
                                 this.scrollToBottom();
                             } else if (event.type === 'meta') {
@@ -601,7 +601,7 @@ jQuery(document).ready(function($) {
             if (uniqueRefs.length === 0) return;
 
             let formattedContent = this.formatMessage(
-                fullText.replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '').trim()
+                fullText.replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '').replace(/https?:\/\/skald\.theconcreteprotector\.com\/[^\s]*/g, '').trim()
             );
 
             const usedRefs = new Set();
@@ -677,6 +677,7 @@ jQuery(document).ready(function($) {
             // Keep content as-is - only remove Skald internal URLs
             let cleanForFormat = content
                 .replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '')
+                .replace(/https?:\/\/skald\.theconcreteprotector\.com\/[^\s]*/g, '')
                 .trim();
 
             // Format content first (this escapes HTML)

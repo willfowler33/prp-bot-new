@@ -142,6 +142,7 @@ jQuery(document).ready(function($) {
 
             // Remove Skald memo URLs from content (we'll show proper PDF links in references instead)
             cleanContent = cleanContent.replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '');
+            cleanContent = cleanContent.replace(/https?:\/\/skald\.theconcreteprotector\.com\/[^\s]*/g, '');
 
             // Format references as footnotes if available
             let referencesHtml = '';
@@ -377,6 +378,7 @@ jQuery(document).ready(function($) {
                                     .replace(/\[\d+\]/g, '')
                                     .replace(/\[\s*\]/g, '')
                                     .replace(/https?:\/\/(app\.)?useskald\.com\/[^\s]*/g, '')
+                                    .replace(/https?:\/\/skald\.theconcreteprotector\.com\/[^\s]*/g, '')
                                     .trim();
                                 bubbleEl.innerHTML = this.formatMessage(cleanContent);
                                 this.scrollToBottom();

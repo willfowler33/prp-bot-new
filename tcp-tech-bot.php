@@ -13,6 +13,11 @@ if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly
 }
 
+// Base URL for the self-hosted Skald API (path appended at each call site)
+if (!defined('TCP_SKALD_API_BASE')) {
+    define('TCP_SKALD_API_BASE', 'https://skald.theconcreteprotector.com');
+}
+
 // Include the Conversation Manager and Bot Manager
 require_once plugin_dir_path(__FILE__) . 'includes/class-conversation-manager.php';
 require_once plugin_dir_path(__FILE__) . 'includes/class-bot-manager.php';
@@ -931,7 +936,7 @@ class TCP_Tech_Bot_Chat {
         }
 
         // Make API request to Skald
-        $url = "https://api.useskald.com/api/v1/chat";
+        $url = TCP_SKALD_API_BASE . "/api/v1/chat";
 
         $body = array(
             'query' => $message,
@@ -1374,7 +1379,7 @@ class TCP_Tech_Bot_Chat {
         $is_first_message  = empty($existing_messages);
 
         // Make API request to Skald using bot-specific credentials
-        $url  = 'https://api.useskald.com/api/v1/chat';
+        $url  = TCP_SKALD_API_BASE . '/api/v1/chat';
         $body = array(
             'query'      => $message,
             'stream'     => false,
@@ -1495,7 +1500,7 @@ class TCP_Tech_Bot_Chat {
      * Proxy Skald streaming API via cURL and forward SSE events to the browser
      */
     private function proxy_skald_stream($api_key, $body) {
-        $url = 'https://api.useskald.com/api/v1/chat';
+        $url = TCP_SKALD_API_BASE . '/api/v1/chat';
         $body['stream'] = true;
 
         $ch = curl_init($url);
@@ -1691,7 +1696,7 @@ class TCP_Tech_Bot_Chat {
         $full_response = '';
         $references    = array();
 
-        $url = 'https://api.useskald.com/api/v1/chat';
+        $url = TCP_SKALD_API_BASE . '/api/v1/chat';
         $body['stream'] = true;
 
         $ch = curl_init($url);
